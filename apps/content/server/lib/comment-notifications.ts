@@ -1,0 +1,194 @@
+import {
+  emailStrong,
+  getAppProductionUrl,
+  notifyActivity,
+  renderEmail,
+  runActivityNotification,
+  sendEmail,
+  type ActivityNotificationResult,
+} from "@agent-native/core/server";
+import { filterRecipientsByResourceAccess } from "@agent-native/core/sharing";
+import { and, eq } from "drizzle-orm";
+
+import { commentAttributionMessagesByLocale } from "../../shared/comment-attribution-messages.js";
+import { CONTENT_USER_PREFS_KEY } from "../../shared/content-user-prefs.js";
+import { getDb, schema } from "../db/index.js";
+import {
+  CONTENT_DOCUMENT_COMMENT_EMAIL_ID,
+  CONTENT_DOCUMENT_MENTION_EMAIL_ID,
+} from "./emails.js";
+
+export type DocumentCommentNotificationResult = ActivityNotificationResult;
+
+const LOG_LABEL = "[content] comment notification";
+const EXCERPT_LIMIT = 240;
+
+function escapeEmailText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function excerpt(content: string): string {
+  const collapsed = content.replace(/\s+/g, " ").trim();
+  return collapsed.length > EXCERPT_LIMIT
+    ? `${collapsed.slice(0, EXCERPT_LIMIT - 1)}…`
+    : collapsed;
+}
+
+function documentUrl(documentId: string): string {
+  const base = getAppProductionUrl().replace(/\/+$/, "");
+  return `${base}/page/${encodeURIComponent(documentId)}`;
+}
+
+async function threadParticipants(
+  documentId: string,
+  threadId: string,
+): Promise<string[]> {
+  const rows = await getDb()
+    .select({ authorEmail: schema.documentComments.authorEmail })
+    .from(schema.documentComments)
+    .where(
+      and(
+        eq(schema.documentComments.documentId, documentId),
+        eq(schema.documentComments.threadId, threadId),
+      ),
+    );
+  return rows.map((row) => row.authorEmail);
+}
+
+export interface DocumentCommentNotificationInput {
+  documentId: string;
+  documentTitle: string;
+  orgId?: string | null;
+  threadId: string;
+  ownerEmail: string;
+  authorEmail: string;
+  authorName?: string | null;
+  submissionSource?: string | null;
+  content: string;
+  mentions: { email: string; name: string }[];
+  isReply: boolean;
+}
+
+export function renderDocumentCommentEmail({
+  actor,
+  title,
+  url,
+  content,
+  isReply,
+  wasMentioned,
+  submissionSource,
+}: {
+  actor: string;
+  title: string;
+  url: string;
+  content: string;
+  isReply: boolean;
+  wasMentioned: boolean;
+  submissionSource?: string | null;
+}) {
+  const attribution =
+    submissionSource === "mcp" || submissionSource === "agent"
+      ? commentAttributionMessagesByLocale["en-US"].aiAttribution.replace(
+          "{{name}}",
+          () => actor,
+        )
+      : null;
+  const lead = wasMentioned
+    ? `${emailStrong(actor)} mentioned you in a comment on ${emailStrong(title)}.`
+    : isReply
+      ? `${emailStrong(actor)} replied in a comment thread on ${emailStrong(title)}.`
+      : `${emailStrong(actor)} commented on ${emailStrong(title)}.`;
+  const subject = wasMentioned
+    ? `${actor} mentioned you on "${title}"`
+    : isReply
+      ? `${actor} replied to a comment on "${title}"`
+      : `${actor} commented on "${title}"`;
+
+  return {
+    subject: attribution
+      ? `${subject} · ${commentAttributionMessagesByLocale["en-US"].aiBadge}`
+      : subject,
+    ...renderEmail({
+      preheader: attribution ?? `${actor} commented on ${title}.`,
+      heading: wasMentioned
+        ? "You were mentioned"
+        : isReply
+          ? "New reply on your document"
+          : "New comment",
+      paragraphs: attribution
+        ? [
+            escapeEmailText(attribution),
+            lead,
+            `"${escapeEmailText(excerpt(content))}"`,
+          ]
+        : [lead, `"${escapeEmailText(excerpt(content))}"`],
+      cta: { label: "Open document", url },
+      footer:
+        "You received this because you own, were mentioned in, or participated in this thread. Turn these off in Documents settings.",
+    }),
+  };
+}
+
+export async function notifyDocumentComment(
+  input: DocumentCommentNotificationInput,
+): Promise<DocumentCommentNotificationResult> {
+  return runActivityNotification(LOG_LABEL, () =>
+    deliverDocumentCommentEmails(input),
+  );
+}
+
+async function deliverDocumentCommentEmails(
+  input: DocumentCommentNotificationInput,
+): Promise<DocumentCommentNotificationResult> {
+  const title = input.documentTitle.trim() || "Untitled";
+  const mentioned = new Set(
+    input.mentions.map((mention) => mention.email.trim().toLowerCase()),
+  );
+
+  const candidates = [input.ownerEmail, ...mentioned];
+  if (input.isReply) {
+    candidates.push(
+      ...(await threadParticipants(input.documentId, input.threadId)),
+    );
+  }
+
+  const allowed = await filterRecipientsByResourceAccess({
+    resourceType: "document",
+    resourceId: input.documentId,
+    emails: candidates,
+    orgId: input.orgId,
+  });
+
+  const actor = input.authorName?.trim() || input.authorEmail;
+  const url = documentUrl(input.documentId);
+
+  return notifyActivity({
+    candidates: allowed,
+    actorEmail: input.authorEmail,
+    preferenceKey: CONTENT_USER_PREFS_KEY,
+    logLabel: LOG_LABEL,
+    send: async (to) => {
+      const wasMentioned = mentioned.has(to);
+      await sendEmail({
+        ...renderDocumentCommentEmail({
+          actor,
+          title,
+          url,
+          content: input.content,
+          isReply: input.isReply,
+          wasMentioned,
+          submissionSource: input.submissionSource,
+        }),
+        to,
+        templateId: wasMentioned
+          ? CONTENT_DOCUMENT_MENTION_EMAIL_ID
+          : CONTENT_DOCUMENT_COMMENT_EMAIL_ID,
+      });
+    },
+  });
+}

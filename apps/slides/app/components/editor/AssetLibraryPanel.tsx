@@ -1,0 +1,297 @@
+import { appBasePath } from "@agent-native/core/client/api-path";
+import { useT } from "@agent-native/core/client/i18n";
+import { IconUpload, IconTrash, IconLoader2, IconX } from "@tabler/icons-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
+import { toast } from "sonner";
+
+import { UploadStorageGate } from "@/components/editor/UploadStorageGate";
+import { useSlideFileStorageStatus } from "@/hooks/use-slide-file-storage-status";
+import { isMissingUploadProviderError } from "@/lib/image-drop-to-agent";
+
+interface Asset {
+  id: string;
+  url: string;
+  filename: string;
+  size: number;
+  createdAt: string;
+}
+
+interface AssetLibraryPanelProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelectAsset?: (url: string) => void;
+  anchorRef?: React.RefObject<HTMLButtonElement | null>;
+}
+
+export default function AssetLibraryPanel({
+  open,
+  onOpenChange,
+  onSelectAsset,
+  anchorRef,
+}: AssetLibraryPanelProps) {
+  const t = useT();
+  const storageQuery = useSlideFileStorageStatus(open);
+  const fileStorageConfigured =
+    storageQuery.data?.configured === true && !storageQuery.isError;
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [storagePromptOpen, setStoragePromptOpen] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOpenChange(false);
+    };
+    const handleClick = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onOpenChange(false);
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    document.addEventListener("mousedown", handleClick);
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      document.removeEventListener("mousedown", handleClick);
+    };
+  }, [open, onOpenChange]);
+
+  const fetchAssets = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${appBasePath()}/api/assets`);
+      if (res.ok) setAssets(await res.json());
+    } catch {
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) void fetchAssets();
+  }, [open, fetchAssets]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    if (!fileStorageConfigured) {
+      e.target.value = "";
+      return;
+    }
+    setUploading(true);
+    const failures: string[] = [];
+    let storageSetupRequired = false;
+    try {
+      for (const file of Array.from(files)) {
+        const form = new FormData();
+        form.append("file", file);
+        try {
+          const res = await fetch(`${appBasePath()}/api/assets/upload`, {
+            method: "POST",
+            body: form,
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => null);
+            if (
+              isMissingUploadProviderError(
+                res.status,
+                typeof body?.error === "string" ? body.error : undefined,
+              )
+            ) {
+              storageSetupRequired = true;
+            }
+            failures.push(
+              `${file.name}: ${body?.error || `HTTP ${res.status}`}`,
+            );
+          }
+        } catch {
+          failures.push(`${file.name}: upload failed`);
+        }
+      }
+      await fetchAssets();
+      if (storageSetupRequired) {
+        const status = await storageQuery.refetch();
+        if (status.isSuccess && status.data.configured === true) {
+          toast.error(t("raw.assetUploadFailed"), {
+            description: t("home.fileStorageSetupRequired"),
+          });
+        } else {
+          setStoragePromptOpen(true);
+        }
+        return;
+      }
+      if (failures.length > 0) {
+        toast.error(t("raw.assetUploadFailed"), {
+          description: failures.join("\n"),
+        });
+      }
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const requestUpload = () => {
+    if (uploading) return;
+    if (fileStorageConfigured) uploadInputRef.current?.click();
+    else setStoragePromptOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await fetch(
+        `${appBasePath()}/api/assets/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      if (!res.ok) {
+        toast.error(t("raw.assetDeleteFailed"));
+        return;
+      }
+      setAssets((prev) => prev.filter((a) => a.id !== id));
+    } catch {
+      toast.error(t("raw.assetDeleteFailed"));
+    }
+  };
+
+  const handleSelect = (url: string) => {
+    onSelectAsset?.(url);
+    onOpenChange(false);
+  };
+
+  if (!open) return null;
+
+  let style: React.CSSProperties = {
+    position: "fixed",
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
+    zIndex: 9999,
+  };
+
+  if (anchorRef?.current) {
+    const rect = anchorRef.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    if (vw < 640) {
+      style = {
+        position: "fixed",
+        top: rect.bottom + 8,
+        left: 12,
+        right: 12,
+        zIndex: 9999,
+      };
+    } else {
+      style = {
+        position: "fixed",
+        top: rect.bottom + 8,
+        right: Math.max(8, vw - rect.right),
+        zIndex: 9999,
+      };
+    }
+  }
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      style={style}
+      className="w-[min(20rem,calc(100vw-24px))] max-h-[420px] bg-popover border border-border rounded-xl shadow-2xl shadow-black/60 overflow-hidden flex flex-col"
+    >
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between flex-shrink-0">
+        <h3 className="text-sm font-semibold text-foreground">
+          {t("editorToolbar.assetLibrary")}
+        </h3>
+        <button
+          onClick={() => onOpenChange(false)}
+          className="text-muted-foreground/70 hover:text-muted-foreground transition-colors"
+          aria-label="Close"
+        >
+          <IconX className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="px-4 pb-4 space-y-3 overflow-y-auto flex-1">
+        {/* Upload */}
+        <button
+          type="button"
+          onClick={requestUpload}
+          disabled={uploading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 transition-colors hover:border-primary/40 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {uploading ? (
+            <IconLoader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
+          ) : (
+            <IconUpload className="w-3.5 h-3.5 text-muted-foreground" />
+          )}
+          <span className="text-xs text-muted-foreground">
+            {uploading ? "Uploading..." : "Upload images"}
+          </span>
+        </button>
+        <input
+          ref={uploadInputRef}
+          type="file"
+          accept="image/*,.svg"
+          multiple
+          onChange={handleUpload}
+          className="hidden"
+          disabled={uploading || !fileStorageConfigured}
+        />
+        <UploadStorageGate
+          configured={fileStorageConfigured}
+          unavailable={!storageQuery.isSuccess}
+          open={storagePromptOpen}
+          onOpenChange={setStoragePromptOpen}
+          onRetry={() => void storageQuery.refetch()}
+        />
+
+        {/* Grid */}
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <IconLoader2 className="w-4 h-4 text-muted-foreground animate-spin" />
+          </div>
+        ) : assets.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-xs">
+            {t("raw.noAssetsYet")}
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {assets.map((asset) => (
+              <div
+                key={asset.id}
+                className="group relative aspect-square rounded-md overflow-hidden border border-border bg-muted"
+              >
+                <button
+                  onClick={
+                    onSelectAsset ? () => handleSelect(asset.url) : undefined
+                  }
+                  className={`w-full h-full ${onSelectAsset ? "cursor-pointer hover:ring-2 hover:ring-[#609FF8]/50" : "cursor-default"}`}
+                >
+                  <img
+                    src={asset.url}
+                    alt={asset.filename}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleDelete(asset.id);
+                  }}
+                  className="absolute top-0.5 right-0.5 w-5 h-5 bg-black/70 text-white/70 hover:text-red-400 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label={`Delete ${asset.filename}`}
+                >
+                  <IconTrash className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}

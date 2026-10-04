@@ -1,0 +1,401 @@
+import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "vitest";
+
+import { sampleSpring, springToCssLinear } from "../../../shared/motion-easing";
+
+interface FakeElement {
+  style: Record<string, string>;
+}
+
+function loadBridge(): {
+  lerp: (a: string, b: string, ratio: number) => string;
+  interpolate: (
+    keyframes: Array<{ t: number; value: string; ease?: string }>,
+    t: number,
+  ) => string;
+  parseColor: (value: string) => number[] | null;
+  evalEase: (ease: string | undefined, x: number) => number;
+  trackLocalT: (
+    track: { delayMs?: number; durationMs?: number },
+    t: number,
+  ) => number;
+  sendMessage: (data: unknown) => void;
+  addElement: (nodeId: string) => FakeElement;
+  removeElement: (nodeId: string) => void;
+} {
+  const generatedPath = fileURLToPath(
+    new URL(
+      "../../../.generated/bridge/motion-preview.generated.ts",
+      import.meta.url,
+    ),
+  );
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { motionPreviewBridgeScript } = require(generatedPath) as {
+    motionPreviewBridgeScript: string;
+  };
+
+  let body = motionPreviewBridgeScript;
+  body = body.replace(/^["']use strict["'];\s*\(\(\)\s*=>\s*\{/, "");
+  body = body.replace(/\}\)\(\);\s*$/, "");
+  body = body.replace(/^\s*\/\/[^\n]*\n/, "");
+  body = body.replace(/^\s*\(function\s*\(\s*\)\s*\{/, "");
+  body = body.replace(/\}\)\(\);\s*$/, "");
+
+  const listeners: Array<(e: unknown) => void> = [];
+  const elements = new Map<string, FakeElement>();
+  const parentSentinel = {};
+  const fakeWindow = {
+    parent: parentSentinel,
+    addEventListener(type: string, fn: (e: unknown) => void) {
+      if (type === "message") listeners.push(fn);
+    },
+  };
+  const fakeDocument = {
+    querySelector(selector: string): FakeElement | null {
+      const m = /\[data-agent-native-node-id="([^"]+)"\]/.exec(selector);
+      return m ? (elements.get(m[1]) ?? null) : null;
+    },
+    contains(node: unknown): boolean {
+      return Array.from(elements.values()).includes(node as FakeElement);
+    },
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const factory = new Function(
+    "window",
+    "document",
+    body +
+      "\n; return { lerp, interpolate, parseColor, evalEase, trackLocalT };",
+  );
+  const api = factory(fakeWindow, fakeDocument);
+  return {
+    ...api,
+    sendMessage: (data: unknown) => {
+      for (const fn of listeners) fn({ source: parentSentinel, data });
+    },
+    addElement: (nodeId: string) => {
+      const el: FakeElement = { style: {} };
+      elements.set(nodeId, el);
+      return el;
+    },
+    removeElement: (nodeId: string) => {
+      elements.delete(nodeId);
+    },
+  };
+}
+
+const bridge = loadBridge();
+const at = (from: string, to: string, t: number, ease = "linear") =>
+  bridge.interpolate(
+    [
+      { t: 0, value: from, ease },
+      { t: 1, value: to, ease },
+    ],
+    t,
+  );
+
+describe("motion-preview bridge interpolation", () => {
+  it("interpolates plain numbers with units (opacity / translateY px)", () => {
+    expect(at("0", "1", 0.5)).toBe("0.5");
+    expect(at("0", "1", 0.25)).toBe("0.25");
+    expect(at("translateY(16px)", "translateY(0px)", 0.5)).toBe(
+      "translateY(8px)",
+    );
+    expect(at("translateY(16px)", "translateY(0px)", 0.25)).toBe(
+      "translateY(12px)",
+    );
+  });
+
+  it("interpolates scale() and blur() function values instead of snapping", () => {
+    expect(at("scale(0.8)", "scale(1)", 0.5)).toBe("scale(0.9)");
+    expect(at("blur(8px)", "blur(0px)", 0.5)).toBe("blur(4px)");
+    expect(at("blur(8px)", "blur(0px)", 0.25)).toBe("blur(6px)");
+  });
+
+  it("interpolates compound transforms component-wise", () => {
+    expect(
+      at("translateY(20px) scale(0.5)", "translateY(0px) scale(1)", 0.5),
+    ).toBe("translateY(10px) scale(0.75)");
+  });
+
+  it("interpolates hex colors through rgb (color / background-color)", () => {
+    expect(at("#000000", "#ffffff", 0.5)).toBe("rgb(128, 128, 128)");
+    expect(at("#ff0000", "#0000ff", 0.5)).toBe("rgb(128, 0, 128)");
+  });
+
+  it("interpolates rgb()/rgba() and hsl() colors", () => {
+    expect(at("rgb(0, 0, 0)", "rgb(100, 200, 50)", 0.5)).toBe(
+      "rgb(50, 100, 25)",
+    );
+    expect(at("rgba(0,0,0,0)", "rgba(0,0,0,1)", 0.5)).toBe(
+      "rgba(0, 0, 0, 0.5)",
+    );
+    expect(at("hsl(0, 100%, 50%)", "hsl(120, 100%, 50%)", 0)).toBe(
+      "rgb(255, 0, 0)",
+    );
+  });
+
+  it("snaps only for non-interpolable keyword values", () => {
+    expect(at("none", "block", 0.4)).toBe("none");
+    expect(at("none", "block", 0.6)).toBe("block");
+  });
+
+  it("never snaps mid-scrub for the shipped presets", () => {
+    const presets: Array<[string, string]> = [
+      ["0", "1"],
+      ["translateY(16px)", "translateY(0px)"],
+      ["scale(0.8)", "scale(1)"],
+      ["blur(8px)", "blur(0px)"],
+      ["#000000", "#3366ff"],
+      ["#ffffff", "#101820"],
+    ];
+    for (const [from, to] of presets) {
+      const mid = at(from, to, 0.5);
+      expect(mid === from && mid === to).toBe(false);
+      if (from !== to) {
+        expect(mid).not.toBe(from);
+        expect(mid).not.toBe(to);
+      }
+    }
+  });
+
+  it("maps a `none` endpoint to the identity of the other endpoint", () => {
+    expect(at("none", "translateY(16px)", 0.5)).toBe("translateY(8px)");
+    expect(at("translateY(16px)", "none", 0.5)).toBe("translateY(8px)");
+    expect(at("none", "blur(8px)", 0.5)).toBe("blur(4px)");
+    expect(at("none", "translateY(20px) scale(0.5)", 0.5)).toBe(
+      "translateY(10px) scale(0.75)",
+    );
+  });
+});
+
+describe("motion-preview bridge easing", () => {
+  it("applies the CSS `ease` curve when a keyframe omits ease", () => {
+    const eased = bridge.interpolate(
+      [
+        { t: 0, value: "0" },
+        { t: 1, value: "1" },
+      ],
+      0.5,
+    );
+    expect(parseFloat(eased)).toBeGreaterThan(0.7);
+    expect(parseFloat(eased)).toBeLessThan(0.9);
+  });
+
+  it("evaluates keywords, cubic-bezier, and steps", () => {
+    expect(bridge.evalEase("linear", 0.25)).toBeCloseTo(0.25, 6);
+    expect(bridge.evalEase("ease-in", 0.25)).toBeLessThan(0.25);
+    expect(bridge.evalEase("ease-out", 0.25)).toBeGreaterThan(0.25);
+    expect(bridge.evalEase("ease-in-out", 0.5)).toBeCloseTo(0.5, 3);
+    expect(bridge.evalEase("step-start", 0.01)).toBe(1);
+    expect(bridge.evalEase("step-end", 0.99)).toBe(0);
+    expect(bridge.evalEase("steps(4, end)", 0.3)).toBeCloseTo(0.25, 6);
+    expect(bridge.evalEase("steps(4, start)", 0.3)).toBeCloseTo(0.5, 6);
+    for (const ease of [
+      "linear",
+      "ease",
+      "ease-in-out",
+      "cubic-bezier(0.4, 0, 0.2, 1)",
+      "steps(3, end)",
+      "spring",
+    ]) {
+      expect(bridge.evalEase(ease, 0)).toBe(0);
+      expect(bridge.evalEase(ease, 1)).toBe(1);
+    }
+  });
+
+  it("supports overshoot beziers (Spring preset) past 1", () => {
+    const values = [0.5, 0.6, 0.7, 0.8].map((x) =>
+      bridge.evalEase("cubic-bezier(0.34,1.56,0.64,1)", x),
+    );
+    expect(Math.max(...values)).toBeGreaterThan(1);
+    const mid = bridge.interpolate(
+      [
+        {
+          t: 0,
+          value: "translateY(100px)",
+          ease: "cubic-bezier(0.34,1.56,0.64,1)",
+        },
+        { t: 1, value: "translateY(0px)", ease: "linear" },
+      ],
+      0.7,
+    );
+    const px = parseFloat(mid.replace("translateY(", ""));
+    expect(px).toBeLessThan(0);
+  });
+
+  it("holds the from value across the interval for step-end easing", () => {
+    const held = bridge.interpolate(
+      [
+        { t: 0, value: "0", ease: "step-end" },
+        { t: 1, value: "1", ease: "linear" },
+      ],
+      0.9,
+    );
+    expect(held).toBe("0");
+  });
+
+  it("falls back to linear for unknown easing strings", () => {
+    expect(bridge.evalEase("totally-unknown", 0.4)).toBeCloseTo(0.4, 6);
+  });
+});
+
+describe("motion-preview bridge spring + linear() easing (Figma Motion parity)", () => {
+  it("evaluates spring tokens with real physics, matching the shared sampler", () => {
+    for (const [token, spring] of [
+      ["spring(0.69)", { bounce: 0.69, settle: 1 }],
+      ["spring(0)", { bounce: 0, settle: 1 }],
+      ["spring(0.2, 0.5)", { bounce: 0.2, settle: 0.5 }],
+    ] as const) {
+      for (const x of [0, 0.1, 0.3, 0.5, 0.7, 0.9, 1]) {
+        expect(bridge.evalEase(token, x)).toBeCloseTo(
+          sampleSpring(spring, x),
+          10,
+        );
+      }
+    }
+  });
+
+  it("bouncy springs overshoot past 1; bounce 0 never does", () => {
+    let max = 0;
+    for (let i = 0; i <= 200; i++) {
+      max = Math.max(max, bridge.evalEase("spring(0.69)", i / 200));
+    }
+    expect(max).toBeGreaterThan(1.1);
+    for (let i = 0; i <= 100; i++) {
+      expect(bridge.evalEase("spring(0)", i / 100)).toBeLessThanOrEqual(1.0001);
+    }
+  });
+
+  it("evaluates CSS linear() stop lists (incl. compiled springs)", () => {
+    expect(bridge.evalEase("linear(0, 0.5, 1)", 0.25)).toBeCloseTo(0.25, 6);
+    expect(bridge.evalEase("linear(0, 0.9 20%, 1)", 0.2)).toBeCloseTo(0.9, 6);
+    expect(bridge.evalEase("linear(0, 1 40% 60%, 1)", 0.5)).toBeCloseTo(1, 6);
+    const compiled = springToCssLinear({ bounce: 0.69, settle: 1 });
+    for (const x of [0.2, 0.5, 0.8]) {
+      expect(
+        Math.abs(
+          bridge.evalEase(compiled, x) -
+            sampleSpring({ bounce: 0.69, settle: 1 }, x),
+        ),
+      ).toBeLessThan(0.08);
+    }
+  });
+});
+
+describe("motion-preview bridge per-track offsets (span timing)", () => {
+  it("maps timeline time into an offset track's local span, clamped outside", () => {
+    const fresh = loadBridge();
+    fresh.sendMessage({
+      type: "motion-load-tracks",
+      tracks: [],
+      durationMs: 2000,
+    });
+    const track = { delayMs: 500, durationMs: 1000 };
+    expect(fresh.trackLocalT(track, 0)).toBe(0);
+    expect(fresh.trackLocalT(track, 0.25)).toBe(0);
+    expect(fresh.trackLocalT(track, 0.5)).toBeCloseTo(0.5, 6);
+    expect(fresh.trackLocalT(track, 0.75)).toBe(1);
+    expect(fresh.trackLocalT(track, 1)).toBe(1);
+    expect(fresh.trackLocalT({}, 0.42)).toBeCloseTo(0.42, 6);
+  });
+
+  it("previews offset tracks through the real message + inline-style path", () => {
+    const fresh = loadBridge();
+    const el = fresh.addElement("hero");
+    fresh.sendMessage({
+      type: "motion-load-tracks",
+      durationMs: 2000,
+      tracks: [
+        {
+          targetNodeId: "hero",
+          property: "opacity",
+          delayMs: 1000,
+          durationMs: 1000,
+          keyframes: [
+            { t: 0, value: "0", ease: "linear" },
+            { t: 1, value: "1", ease: "linear" },
+          ],
+        },
+      ],
+    });
+    fresh.sendMessage({ type: "motion-preview", t: 0.25, durationMs: 2000 });
+    expect(el.style.opacity).toBe("0");
+    fresh.sendMessage({ type: "motion-preview", t: 0.75, durationMs: 2000 });
+    expect(el.style.opacity).toBe("0.5");
+    fresh.sendMessage({ type: "motion-preview", t: 1, durationMs: 2000 });
+    expect(el.style.opacity).toBe("1");
+    fresh.sendMessage({ type: "motion-preview-clear" });
+    expect(el.style.opacity).toBe("");
+  });
+
+  it("caches the resolved element across preview ticks but re-resolves once it leaves the document", () => {
+    const fresh = loadBridge();
+    const originalEl = fresh.addElement("hero");
+    fresh.sendMessage({
+      type: "motion-load-tracks",
+      durationMs: 1000,
+      tracks: [
+        {
+          targetNodeId: "hero",
+          property: "opacity",
+          keyframes: [
+            { t: 0, value: "0", ease: "linear" },
+            { t: 1, value: "1", ease: "linear" },
+          ],
+        },
+      ],
+    });
+    fresh.sendMessage({ type: "motion-preview", t: 0.25, durationMs: 1000 });
+    expect(originalEl.style.opacity).toBe("0.25");
+    fresh.sendMessage({ type: "motion-preview", t: 0.5, durationMs: 1000 });
+    expect(originalEl.style.opacity).toBe("0.5");
+
+    fresh.removeElement("hero");
+    const replacementEl = fresh.addElement("hero");
+    fresh.sendMessage({ type: "motion-preview", t: 0.75, durationMs: 1000 });
+
+    expect(originalEl.style.opacity).toBe("0.5");
+    expect(replacementEl.style.opacity).toBe("0.75");
+  });
+
+  it("previews modern individual transform properties (translate/scale/rotate)", () => {
+    const fresh = loadBridge();
+    const el = fresh.addElement("card");
+    fresh.sendMessage({
+      type: "motion-load-tracks",
+      durationMs: 1000,
+      tracks: [
+        {
+          targetNodeId: "card",
+          property: "translate",
+          keyframes: [
+            { t: 0, value: "0px 16px", ease: "linear" },
+            { t: 1, value: "0px 0px", ease: "linear" },
+          ],
+        },
+        {
+          targetNodeId: "card",
+          property: "rotate",
+          keyframes: [
+            { t: 0, value: "0deg", ease: "linear" },
+            { t: 1, value: "90deg", ease: "linear" },
+          ],
+        },
+        {
+          targetNodeId: "card",
+          property: "scale",
+          keyframes: [
+            { t: 0, value: "0.8", ease: "linear" },
+            { t: 1, value: "1", ease: "linear" },
+          ],
+        },
+      ],
+    });
+    fresh.sendMessage({ type: "motion-preview", t: 0.5, durationMs: 1000 });
+    expect(el.style.translate).toBe("0px 8px");
+    expect(el.style.rotate).toBe("45deg");
+    expect(el.style.scale).toBe("0.9");
+  });
+});

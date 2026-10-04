@@ -1,0 +1,557 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { MockForbiddenError } = vi.hoisted(() => {
+  class MockForbiddenError extends Error {}
+  return { MockForbiddenError };
+});
+
+const mockResolveAccess = vi.hoisted(() => vi.fn());
+const mockGetRequestUserEmail = vi.hoisted(() => vi.fn());
+const mockGetRequestOrgId = vi.hoisted(() => vi.fn());
+const mockIsAgentRecordingCaller = vi.hoisted(() => vi.fn());
+const mockShareLimit = vi.hoisted(() => vi.fn(async () => []));
+const mockShareQuery = vi.hoisted(() => {
+  const query = {
+    from: vi.fn(),
+    where: vi.fn(),
+    limit: mockShareLimit,
+  };
+  query.from.mockReturnValue(query);
+  query.where.mockReturnValue(query);
+  return query;
+});
+const mockTagRows = vi.hoisted(() =>
+  vi.fn(async () => [] as { tag: string }[]),
+);
+const mockTagsQuery = vi.hoisted(() => {
+  const query = {
+    from: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+  };
+  query.from.mockReturnValue(query);
+  query.where.mockReturnValue(query);
+  query.orderBy.mockImplementation(() => mockTagRows());
+  return query;
+});
+const mockPlayerQuery = vi.hoisted(() => ({
+  build: null as null | (() => unknown),
+}));
+const mockDb = vi.hoisted(() => ({
+  select: vi.fn((selection?: unknown) => {
+    if (!selection) {
+      if (!mockPlayerQuery.build) {
+        throw new Error("player data query reached before share verification");
+      }
+      return mockPlayerQuery.build();
+    }
+    if (
+      typeof selection === "object" &&
+      selection !== null &&
+      "tag" in selection
+    ) {
+      return mockTagsQuery;
+    }
+    return mockShareQuery;
+  }),
+  selectDistinct: vi.fn(() => mockTagsQuery),
+}));
+const mockCountRecordingViews = vi.hoisted(() =>
+  vi.fn(async (_recordingId: string) => 0),
+);
+const mockResolvePlayerVideoUrl = vi.hoisted(() =>
+  vi.fn(() => "/api/video/rec-1"),
+);
+const mockResolvePlayerThumbnailUrl = vi.hoisted(() =>
+  vi.fn(
+    (
+      recording: {
+        thumbnailUrl?: string | null;
+        animatedThumbnailUrl?: string | null;
+      },
+      options?: { animated?: boolean },
+    ) => {
+      if (!recording.thumbnailUrl && !recording.animatedThumbnailUrl) {
+        return null;
+      }
+      return options?.animated
+        ? "/api/thumbnail/rec-1?animated=1"
+        : "/api/thumbnail/rec-1";
+    },
+  ),
+);
+const mockIsSeekableRepairPending = vi.hoisted(() => vi.fn());
+
+vi.mock("@agent-native/core", () => ({
+  defineAction: (options: unknown) => options,
+  embedApp: (options: unknown) => options,
+}));
+
+vi.mock("@agent-native/core/application-state", () => ({
+  readAppState: vi.fn(async () => null),
+}));
+
+vi.mock("@agent-native/core/server", () => ({
+  buildDeepLink: vi.fn(),
+}));
+
+vi.mock("@agent-native/core/server/request-context", () => ({
+  getRequestOrgId: (...args: unknown[]) => mockGetRequestOrgId(...args),
+  getRequestUserEmail: (...args: unknown[]) => mockGetRequestUserEmail(...args),
+}));
+
+vi.mock("@agent-native/core/sharing", () => ({
+  ForbiddenError: MockForbiddenError,
+  resolveAccess: (...args: unknown[]) => mockResolveAccess(...args),
+}));
+
+vi.mock("drizzle-orm", () => ({
+  and: (...conditions: unknown[]) => ({ kind: "and", conditions }),
+  asc: vi.fn(),
+  eq: (column: unknown, value: unknown) => ({ kind: "eq", column, value }),
+  or: (...conditions: unknown[]) => ({ kind: "or", conditions }),
+  sql: vi.fn(),
+}));
+
+vi.mock("../server/db/index.js", () => ({
+  getDb: () => mockDb,
+  schema: {
+    recordingShares: {
+      id: "recordingShares.id",
+      principalType: "recordingShares.principalType",
+      principalId: "recordingShares.principalId",
+      resourceId: "recordingShares.resourceId",
+    },
+    recordingViewers: {
+      id: "recordingViewers.id",
+      recordingId: "recordingViewers.recordingId",
+      viewerEmail: "recordingViewers.viewerEmail",
+    },
+    recordingTranscripts: { recordingId: "recordingTranscripts.recordingId" },
+    recordingComments: {
+      recordingId: "recordingComments.recordingId",
+      videoTimestampMs: "recordingComments.videoTimestampMs",
+      createdAt: "recordingComments.createdAt",
+    },
+    recordingReactions: {
+      recordingId: "recordingReactions.recordingId",
+      createdAt: "recordingReactions.createdAt",
+    },
+    recordingCtas: {
+      recordingId: "recordingCtas.recordingId",
+      createdAt: "recordingCtas.createdAt",
+    },
+    recordingTags: {
+      recordingId: "recordingTags.recordingId",
+      tag: "recordingTags.tag",
+    },
+    recordingBrowserDiagnostics: {
+      recordingId: "recordingBrowserDiagnostics.recordingId",
+    },
+    recordingBugReports: { recordingId: "recordingBugReports.recordingId" },
+    meetings: {
+      id: "meetings.id",
+      title: "meetings.title",
+      recordingId: "meetings.recordingId",
+    },
+  },
+}));
+
+vi.mock("../server/lib/agent-recording-access.js", () => ({
+  isAgentRecordingCaller: (...args: unknown[]) =>
+    mockIsAgentRecordingCaller(...args),
+}));
+
+vi.mock("../server/lib/player-video-url.js", () => ({
+  resolvePlayerVideoUrl: (...args: unknown[]) =>
+    mockResolvePlayerVideoUrl(...args),
+}));
+
+vi.mock("../server/lib/player-thumbnail-url.js", () => ({
+  resolvePlayerThumbnailUrl: (...args: unknown[]) =>
+    mockResolvePlayerThumbnailUrl(...args),
+}));
+
+vi.mock("../server/lib/media-verification-state.js", () => ({
+  isMediaVerificationPending: vi.fn(() => false),
+}));
+
+vi.mock("../server/lib/seekable-media-state.js", () => ({
+  isSeekableRepairPending: (...args: unknown[]) =>
+    mockIsSeekableRepairPending(...args),
+}));
+
+vi.mock("../server/lib/recordings.js", () => ({
+  parseSpaceIds: vi.fn(() => []),
+  countRecordingViews: (recordingId: string) =>
+    mockCountRecordingViews(recordingId),
+}));
+
+vi.mock("../shared/browser-diagnostics.js", () => ({
+  parseBrowserDiagnosticsRow: vi.fn(() => null),
+}));
+
+vi.mock("../shared/builder-credits.js", () => ({
+  CLIPS_BUILDER_CREDITS_STATE_KEY: "clips-builder-credits",
+  normalizeBuilderCreditsStatus: vi.fn(() => null),
+}));
+
+vi.mock("../shared/transcript-segments.js", () => ({
+  normalizeTranscriptSegments: vi.fn(() => []),
+  parseTranscriptSegments: vi.fn(() => []),
+}));
+
+vi.mock("../shared/transcript-status.js", () => ({
+  resolveTranscriptPresentation: vi.fn(() => ({
+    status: "pending",
+    failureReason: null,
+  })),
+}));
+
+import action from "./get-recording-player-data";
+
+describe("get-recording-player-data direct public access", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetRequestUserEmail.mockReturnValue("viewer@example.com");
+    mockGetRequestOrgId.mockReturnValue("org-1");
+    mockIsAgentRecordingCaller.mockImplementation(
+      (caller: string | undefined) => caller === "tool",
+    );
+    mockIsSeekableRepairPending.mockResolvedValue(false);
+    mockShareLimit.mockResolvedValue([]);
+  });
+
+  it.each(["admin", "editor", "viewer"] as const)(
+    "requires an explicit recording share for %s callers",
+    async (role) => {
+      mockResolveAccess.mockResolvedValue({
+        role,
+        resource: {
+          id: "rec-1",
+          visibility: "public",
+          password: null,
+          expiresAt: null,
+        },
+      });
+
+      await expect(action.run({ recordingId: "rec-1" })).rejects.toThrow(
+        "Open this recording from its share link instead of the direct recording URL",
+      );
+
+      expect(mockDb.select).toHaveBeenCalledWith({
+        id: "recordingShares.id",
+      });
+      expect(mockShareLimit).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("keeps password-protected public recordings on the share flow for agents", async () => {
+    mockResolveAccess.mockResolvedValue({
+      role: "viewer",
+      resource: {
+        id: "rec-1",
+        visibility: "public",
+        password: "protected",
+        expiresAt: null,
+      },
+    });
+
+    await expect(
+      action.run({ recordingId: "rec-1" }, { caller: "tool" } as never),
+    ).rejects.toThrow(
+      "Open this recording from its share link instead of the direct recording URL",
+    );
+  });
+});
+
+function emptyPlayerQuery() {
+  const query: Record<string, unknown> = {};
+  query.from = () => query;
+  query.where = () => query;
+  query.orderBy = async () => [];
+  query.limit = async () => [];
+  return query;
+}
+
+describe("get-recording-player-data view count", () => {
+  beforeEach(() => {
+    mockPlayerQuery.build = emptyPlayerQuery;
+    mockCountRecordingViews.mockClear();
+    mockCountRecordingViews.mockResolvedValue(0);
+    mockIsSeekableRepairPending.mockClear();
+    mockIsSeekableRepairPending.mockResolvedValue(false);
+    mockResolvePlayerVideoUrl.mockClear();
+    mockShareLimit.mockResolvedValue([]);
+    mockResolveAccess.mockResolvedValue({
+      role: "owner",
+      resource: {
+        id: "rec-1",
+        ownerEmail: "owner@example.com",
+        visibility: "private",
+        password: null,
+        expiresAt: null,
+        status: "ready",
+        chaptersJson: "[]",
+        folderId: "folder-1",
+        videoUrl: "https://cdn.example.com/rec-1.webm",
+        videoSizeBytes: 1234,
+      },
+    });
+  });
+
+  afterEach(() => {
+    mockPlayerQuery.build = null;
+  });
+
+  it("returns the counted-view total for the recording", async () => {
+    mockCountRecordingViews.mockResolvedValue(9);
+
+    const result = await action.run({ recordingId: "rec-1" });
+
+    expect(result.viewCount).toBe(9);
+    expect(mockCountRecordingViews).toHaveBeenCalledWith("rec-1");
+  });
+
+  it("returns upload identity only to recording editors", async () => {
+    mockResolveAccess.mockResolvedValue({
+      role: "owner",
+      resource: {
+        id: "rec-1",
+        ownerEmail: "owner@example.com",
+        visibility: "private",
+        password: null,
+        expiresAt: null,
+        status: "processing",
+        chaptersJson: "[]",
+        uploadAttemptId: "attempt-1",
+        uploadGenerationId: "generation-1",
+      },
+    });
+
+    const result = await action.run({ recordingId: "rec-1" });
+
+    expect(result.recording.uploadAttemptId).toBe("attempt-1");
+    expect(result.recording.uploadGenerationId).toBe("generation-1");
+  });
+
+  it("holds the filmstrip back while redactions are pending", async () => {
+    mockShareLimit.mockResolvedValue([{ id: "share-1" }]);
+    mockResolveAccess.mockResolvedValue({
+      role: "viewer",
+      resource: {
+        id: "rec-1",
+        visibility: "public",
+        password: null,
+        expiresAt: null,
+        videoUrl: "https://cdn.example.com/video.mp4",
+        uploadAttemptId: "attempt-1",
+        uploadGenerationId: "generation-1",
+        filmstripUrl: "https://cdn.example.com/strip.jpg",
+        editsJson: JSON.stringify({
+          trims: [],
+          overlays: [
+            {
+              kind: "redact",
+              id: "r1",
+              startMs: 0,
+              endMs: 5_000,
+              keys: [{ atMs: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.2 }],
+            },
+          ],
+        }),
+      },
+    });
+    mockPlayerQuery.build = () => {
+      const query: Record<string, unknown> = {};
+      query.from = () => query;
+      query.where = () => query;
+      query.orderBy = async () => [];
+      query.limit = async () => [];
+      query.then = (resolve: (rows: unknown[]) => unknown) => resolve([]);
+      return query;
+    };
+
+    const result = await action.run({ recordingId: "rec-1" });
+
+    expect(result.recording.filmstripUrl).toBeNull();
+    expect(result.recording.uploadAttemptId).toBeUndefined();
+    expect(result.recording.uploadGenerationId).toBeUndefined();
+  });
+
+  it("keeps a mid-burn screenshot's leftover file URLs from viewers", async () => {
+    // The marker lists the unredacted original until it is deleted; handing
+    // it out would get round the hold the media routes enforce.
+    mockShareLimit.mockResolvedValue([{ id: "share-1" }]);
+    mockResolveAccess.mockResolvedValue({
+      role: "viewer",
+      resource: {
+        id: "rec-1",
+        kind: "image",
+        visibility: "public",
+        password: null,
+        expiresAt: null,
+        imageUrl: "https://cdn.example.com/burned.png",
+        editsJson: JSON.stringify({
+          burnInProgress: {
+            staleUrls: ["https://cdn.example.com/original.png"],
+          },
+        }),
+      },
+    });
+    mockPlayerQuery.build = () => {
+      const query: Record<string, unknown> = {};
+      query.from = () => query;
+      query.where = () => query;
+      query.orderBy = async () => [];
+      query.limit = async () => [];
+      query.then = (resolve: (rows: unknown[]) => unknown) => resolve([]);
+      return query;
+    };
+
+    const result = await action.run({ recordingId: "rec-1" });
+
+    expect(JSON.stringify(result)).not.toContain("original.png");
+  });
+
+  it.each([
+    "{not json",
+    JSON.stringify({ annotations: { id: "not-an-array" } }),
+    JSON.stringify({ burnInProgress: { editsJson: "{not json" } }),
+  ])(
+    "fails when an editor's screenshot edits cannot be read: %s",
+    async (editsJson) => {
+      mockResolveAccess.mockResolvedValue({
+        role: "owner",
+        resource: {
+          id: "rec-1",
+          kind: "image",
+          visibility: "private",
+          password: null,
+          expiresAt: null,
+          imageUrl: "https://cdn.example.com/screenshot.png",
+          editsJson,
+        },
+      });
+
+      await expect(action.run({ recordingId: "rec-1" })).rejects.toThrow(
+        "CLIPS_SCREENSHOT_EDITS_UNREADABLE",
+      );
+    },
+  );
+
+  it("reports zero views without failing the player payload", async () => {
+    const result = await action.run({ recordingId: "rec-1" });
+
+    expect(result.viewCount).toBe(0);
+    expect(result.recording.id).toBe("rec-1");
+    expect(result.recording.folderId).toBe("folder-1");
+  });
+
+  it("includes a trashed recording's timestamp in the player payload", async () => {
+    const trashedAt = "2026-09-22T12:00:00.000Z";
+    mockResolveAccess.mockResolvedValue({
+      role: "owner",
+      resource: {
+        id: "rec-1",
+        ownerEmail: "owner@example.com",
+        visibility: "private",
+        password: null,
+        expiresAt: null,
+        status: "ready",
+        chaptersJson: "[]",
+        trashedAt,
+      },
+    });
+
+    const result = await action.run({ recordingId: "rec-1" });
+
+    expect(result.recording.trashedAt).toBe(trashedAt);
+  });
+
+  it("exposes pending seekable repair state to the player", async () => {
+    mockIsSeekableRepairPending.mockResolvedValue(true);
+
+    const result = await action.run({ recordingId: "rec-1" });
+
+    expect(result.recording.seekableRepairPending).toBe(true);
+    expect(mockIsSeekableRepairPending).toHaveBeenCalledWith({
+      ownerEmail: "owner@example.com",
+      recordingId: "rec-1",
+      recordingStatus: "ready",
+      videoUrl: "https://cdn.example.com/rec-1.webm",
+    });
+  });
+
+  it("keeps an owner's expired recording available", async () => {
+    mockResolveAccess.mockResolvedValue({
+      role: "owner",
+      resource: {
+        id: "rec-1",
+        ownerEmail: "owner@example.com",
+        visibility: "private",
+        password: null,
+        expiresAt: "2020-01-01T00:00:00.000Z",
+        status: "ready",
+        chaptersJson: "[]",
+        videoUrl: "https://cdn.example.com/rec-1.webm",
+        videoSizeBytes: 1234,
+      },
+    });
+
+    const result = await action.run({ recordingId: "rec-1" });
+
+    expect(result.recording.id).toBe("rec-1");
+  });
+
+  it("keeps owner media behind the same-origin video proxy", async () => {
+    mockResolveAccess.mockResolvedValueOnce({
+      role: "owner",
+      resource: {
+        id: "rec-1",
+        ownerEmail: "owner@example.com",
+        visibility: "private",
+        password: null,
+        expiresAt: null,
+        status: "ready",
+        chaptersJson: "[]",
+        videoUrl: "https://cdn.example.com/rec-1.webm",
+        videoSizeBytes: 1234,
+        thumbnailUrl: "https://cdn.example.com/rec-1.jpg",
+        animatedThumbnailUrl: "https://cdn.example.com/preview.gif",
+      },
+    });
+
+    const result = await action.run({ recordingId: "rec-1" });
+
+    expect(mockResolvePlayerVideoUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "rec-1",
+        videoUrl: "https://cdn.example.com/rec-1.webm",
+      }),
+      {
+        addPasswordToken: false,
+        proxyRemoteMedia: true,
+      },
+    );
+    expect(result.recording.videoUrl).toBe("/api/video/rec-1");
+    expect(mockResolvePlayerThumbnailUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "rec-1",
+        thumbnailUrl: "https://cdn.example.com/rec-1.jpg",
+      }),
+    );
+    expect(mockResolvePlayerThumbnailUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "rec-1",
+        animatedThumbnailUrl: "https://cdn.example.com/preview.gif",
+      }),
+      { animated: true },
+    );
+    expect(result.recording.thumbnailUrl).toBe("/api/thumbnail/rec-1");
+    expect(result.recording.animatedThumbnailUrl).toBe(
+      "/api/thumbnail/rec-1?animated=1",
+    );
+    expect(result.recording.videoSizeBytes).toBe(1234);
+  });
+});

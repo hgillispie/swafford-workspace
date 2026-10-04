@@ -1,0 +1,25 @@
+[build]
+command = "export DATABASE_URL=\"${NETLIFY_DATABASE_URL:-$DATABASE_URL}\" && APP_BASE_PATH=/design VITE_APP_BASE_PATH=/design NITRO_PRESET=netlify pnpm --filter design build && if [ \"${CONTEXT:-}\" = \"production\" ]; then pnpm --filter design migrate:production; fi"
+publish = "apps/design/dist"
+functions = "apps/design/.netlify/functions-internal"
+
+[build.environment]
+GA_MEASUREMENT_ID = "G-ESF7FYXGN9"
+GTM_CONTAINER_ID = "GTM-N3WSTXZ"
+  NITRO_PRESET = "netlify"
+  NPM_CONFIG_PRODUCTION = "false"
+AGENT_CHAT_DURABLE_BACKGROUND = "true"
+
+  APP_BASE_PATH = "/design"
+  VITE_APP_BASE_PATH = "/design"
+[context.production.environment]
+AGENT_NATIVE_HOSTED_HARNESS = "true"
+AGENT_NATIVE_ENABLE_KEEP_WARM = "1"
+AGENT_NATIVE_DISABLE_KEEP_WARM_BACKGROUND = "1"
+AGENT_NATIVE_SSR_CACHE = "5m"
+# Production release migrations own schema setup; request functions must skip
+# migration probes on every serverless invocation.
+AGENT_NATIVE_RELEASE_MIGRATIONS = "1"
+
+[functions."*"]
+timeout = 75

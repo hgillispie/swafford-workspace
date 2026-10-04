@@ -1,0 +1,535 @@
+import { createHash } from "crypto";
+
+import { getDbExec } from "@agent-native/core/db";
+import { getRequestRunContext } from "@agent-native/core/server";
+
+import { DASHBOARD_SQL_VALIDATION_TIMEOUT_MS } from "../../shared/dashboard-report-timeouts.js";
+import { resolveCredential } from "./credentials";
+import {
+  credentialCacheScope,
+  requireRequestCredentialContext,
+  type CredentialContext,
+} from "./credentials-context";
+import { getAccessToken } from "./gcloud";
+import { assertReadOnlySql } from "./read-only-sql";
+
+async function getProjectContext(): Promise<{
+  projectId: string;
+  cacheScope: string;
+  ctx: CredentialContext;
+}> {
+  const ctx = requireRequestCredentialContext("BIGQUERY_PROJECT_ID");
+  const projectId = await resolveCredential("BIGQUERY_PROJECT_ID", ctx);
+  if (!projectId) throw new Error("BIGQUERY_PROJECT_ID not configured");
+  return {
+    projectId,
+    cacheScope: credentialCacheScope("BIGQUERY_PROJECT_ID", ctx),
+    ctx,
+  };
+}
+
+export async function getBigQueryProjectId(): Promise<string> {
+  const { projectId } = await getProjectContext();
+  return projectId;
+}
+
+async function getProjectInfo(): Promise<{
+  projectId: string;
+  cacheScope: string;
+  appEventsTable: BigQueryTableRef;
+}> {
+  const { projectId, cacheScope, ctx } = await getProjectContext();
+  return {
+    projectId,
+    cacheScope,
+    appEventsTable: await getAppEventsTable(projectId, ctx),
+  };
+}
+
+export interface BigQueryTableRef {
+  projectId: string;
+  datasetId: string;
+  tableId: string;
+  fullyQualified: string;
+}
+
+function parseBigQueryTableRef(
+  raw: string | null | undefined,
+  fallbackProjectId: string,
+): BigQueryTableRef {
+  const value = raw?.trim().replace(/^`|`$/g, "");
+  const parts = value ? value.split(".") : [];
+  const [projectId, datasetId, tableId] =
+    parts.length === 3
+      ? parts
+      : parts.length === 2
+        ? [fallbackProjectId, parts[0], parts[1]]
+        : [fallbackProjectId, "analytics", "events_partitioned"];
+
+  if (
+    !/^[A-Za-z][A-Za-z0-9-]{4,61}[A-Za-z0-9]$/.test(projectId) ||
+    !/^[A-Za-z_][A-Za-z0-9_]*$/.test(datasetId) ||
+    !/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableId)
+  ) {
+    throw new Error(
+      "ANALYTICS_BIGQUERY_EVENTS_TABLE must be dataset.table or project.dataset.table",
+    );
+  }
+
+  return {
+    projectId,
+    datasetId,
+    tableId,
+    fullyQualified: `${projectId}.${datasetId}.${tableId}`,
+  };
+}
+
+export async function getAppEventsTable(
+  fallbackProjectId: string,
+  ctx: CredentialContext,
+): Promise<BigQueryTableRef> {
+  const configured =
+    (await resolveCredential("ANALYTICS_BIGQUERY_EVENTS_TABLE", ctx)) ||
+    (await resolveCredential("BIGQUERY_APP_EVENTS_TABLE", ctx));
+  return parseBigQueryTableRef(configured, fallbackProjectId);
+}
+
+async function resolveTablePlaceholder(
+  sql: string,
+  projectId?: string,
+  appEventsTable?: BigQueryTableRef,
+): Promise<string> {
+  if (!projectId || !appEventsTable) {
+    const info = await getProjectInfo();
+    projectId ??= info.projectId;
+    appEventsTable ??= info.appEventsTable;
+  }
+  const quotedAppEventsTable = `\`${appEventsTable.fullyQualified}\``;
+  return sql
+    .replace(/`?@app_events`?/gi, quotedAppEventsTable)
+    .replace(
+      /`?@project\.analytics\.events_partitioned`?/gi,
+      quotedAppEventsTable,
+    )
+    .replace(
+      /`?[A-Za-z][A-Za-z0-9-]{4,61}[A-Za-z0-9]\.analytics\.events_partitioned`?/gi,
+      quotedAppEventsTable,
+    )
+    .replace(
+      /(^|[^A-Za-z0-9_.-])`?analytics\.events_partitioned`?/gi,
+      (_match, prefix: string) => `${prefix}${quotedAppEventsTable}`,
+    )
+    .replace(/`@project\./g, `\`${projectId}.`)
+    .replace(/\b@project\./g, `${projectId}.`);
+}
+
+interface L1Entry {
+  result: QueryResult;
+  createdAt: number;
+}
+
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_L1_ENTRIES = 200;
+
+const l1Cache = new Map<string, L1Entry>();
+
+function getCacheKey(
+  sql: string,
+  projectId: string,
+  cacheScope: string,
+): string {
+  // Scope by caller as well as project so a warm server process cannot serve
+  // cached warehouse results across tenants that happen to query the same
+  // project/table names.
+  return createHash("sha256")
+    .update(`${cacheScope}\n${projectId}\n${sql}`)
+    .digest("hex");
+}
+
+function addUtcDateCacheKey(sql: string): string {
+  if (!/\bCURRENT_DATE\s*(?:\(\s*\))?/i.test(sql)) return sql;
+  return `${sql}\n/* agent-native-utc-date:${new Date().toISOString().slice(0, 10)} */`;
+}
+
+function getL1(key: string): QueryResult | null {
+  const entry = l1Cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.createdAt > CACHE_TTL_MS) {
+    l1Cache.delete(key);
+    return null;
+  }
+  return entry.result;
+}
+
+function setL1(key: string, result: QueryResult): void {
+  if (l1Cache.size >= MAX_L1_ENTRIES) {
+    const oldest = l1Cache.keys().next().value;
+    if (oldest) l1Cache.delete(oldest);
+  }
+  l1Cache.set(key, { result, createdAt: Date.now() });
+}
+
+async function getL2(key: string): Promise<QueryResult | null> {
+  try {
+    const db = getDbExec();
+    const nowIso = new Date().toISOString();
+    const { rows } = await db.execute({
+      sql: "SELECT result FROM bigquery_cache WHERE key = $1 AND expires_at > $2",
+      args: [key, nowIso],
+    });
+    if (!rows.length) return null;
+    const raw = (rows[0] as { result: string }).result;
+    return JSON.parse(raw) as QueryResult;
+  } catch (err) {
+    console.warn("[bigquery] L2 cache read failed:", err);
+    return null;
+  }
+}
+
+async function setL2(
+  key: string,
+  sql: string,
+  result: QueryResult,
+): Promise<void> {
+  try {
+    const db = getDbExec();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + CACHE_TTL_MS);
+    const serialized = JSON.stringify(result);
+    await db.execute({
+      sql: "INSERT INTO bigquery_cache (key, sql, result, bytes_processed, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (key) DO UPDATE SET sql = EXCLUDED.sql, result = EXCLUDED.result, bytes_processed = EXCLUDED.bytes_processed, created_at = EXCLUDED.created_at, expires_at = EXCLUDED.expires_at",
+      args: [
+        key,
+        sql,
+        serialized,
+        result.bytesProcessed ?? 0,
+        now.toISOString(),
+        expiresAt.toISOString(),
+      ],
+    });
+    if (Math.random() < 0.01) {
+      await db.execute({
+        sql: "DELETE FROM bigquery_cache WHERE expires_at <= $1",
+        args: [now.toISOString()],
+      });
+    }
+  } catch (err) {
+    console.warn("[bigquery] L2 cache write failed:", err);
+  }
+}
+
+export interface QueryResult {
+  rows: Record<string, unknown>[];
+  totalRows: number;
+  schema: { name: string; type: string }[];
+  bytesProcessed: number;
+  cached?: boolean;
+  truncated?: boolean;
+}
+
+export interface RunQueryOptions {
+  signal?: AbortSignal;
+}
+
+interface BigQueryField {
+  name: string;
+  type: string;
+  mode?: string;
+  fields?: BigQueryField[];
+}
+
+interface BigQueryQueryResponse {
+  schema?: { fields?: BigQueryField[] };
+  rows?: { f: { v: unknown }[] }[];
+  totalRows?: string;
+  totalBytesProcessed?: string;
+  jobComplete?: boolean;
+  jobReference?: { jobId: string };
+}
+
+interface BigQueryGetQueryResultsResponse {
+  schema?: { fields?: BigQueryField[] };
+  rows?: { f: { v: unknown }[] }[];
+  totalRows?: string;
+  jobComplete?: boolean;
+  totalBytesProcessed?: string;
+}
+
+function createAbortError(): Error {
+  if (typeof DOMException !== "undefined") {
+    return new DOMException("BigQuery query aborted", "AbortError");
+  }
+  const error = new Error("BigQuery query aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw createAbortError();
+}
+
+function waitForPollInterval(signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, 1000);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+      reject(createAbortError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function cancelQueryJob(
+  projectId: string,
+  jobId: string,
+  token: string,
+): Promise<void> {
+  try {
+    await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/jobs/${jobId}/cancel`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  } catch {
+    // Cancellation is best-effort and must not hide the original abort or
+    // timeout reason if BigQuery or the network is unavailable.
+  }
+}
+
+const NUMERIC_BQ_TYPES = new Set([
+  "INTEGER",
+  "INT64",
+  "FLOAT",
+  "FLOAT64",
+  "NUMERIC",
+  "BIGNUMERIC",
+]);
+
+function coerceCell(value: unknown, type: string): unknown {
+  if (value == null) return value;
+  const upper = type.toUpperCase();
+  if (NUMERIC_BQ_TYPES.has(upper) && typeof value === "string") {
+    const n = Number(value);
+    return Number.isNaN(n) ? value : n;
+  }
+  if ((upper === "BOOL" || upper === "BOOLEAN") && typeof value === "string") {
+    return value === "true";
+  }
+  return value;
+}
+
+function rowsToObjects(
+  rows: { f: { v: unknown }[] }[],
+  fields: BigQueryField[],
+): Record<string, unknown>[] {
+  return rows.map((row) => {
+    const obj: Record<string, unknown> = {};
+    row.f.forEach((cell, i) => {
+      const field = fields[i];
+      obj[field.name] = coerceCell(cell.v, field.type);
+    });
+    return obj;
+  });
+}
+
+export interface DryRunQueryOptions {
+  signal?: AbortSignal;
+}
+
+export async function dryRunQuery(
+  sql: string,
+  options: DryRunQueryOptions = {},
+): Promise<string | null> {
+  if (options.signal?.aborted) {
+    throw new Error("BigQuery validation was cancelled before it started");
+  }
+  const { projectId, appEventsTable } = await getProjectInfo();
+  const resolvedSql = await resolveTablePlaceholder(
+    sql,
+    projectId,
+    appEventsTable,
+  );
+
+  const token = await getAccessToken();
+  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/jobs`;
+
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutMessage = `BigQuery validation timed out after ${Math.round(DASHBOARD_SQL_VALIDATION_TIMEOUT_MS / 1000)} seconds`;
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+        reject(new Error(timeoutMessage));
+      }, DASHBOARD_SQL_VALIDATION_TIMEOUT_MS);
+    });
+    const request = fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        configuration: {
+          dryRun: true,
+          query: { query: resolvedSql, useLegacySql: false },
+        },
+      }),
+      signal: controller.signal,
+    });
+    const res = await Promise.race([request, timeout]);
+
+    if (res.ok) return null;
+
+    const text = await res.text();
+    try {
+      const parsed = JSON.parse(text) as {
+        error?: { message?: string };
+      };
+      const msg = parsed.error?.message?.trim();
+      if (msg) return msg;
+      // coercion-ok: malformed BigQuery error bodies use the status fallback below.
+    } catch {
+      // Fall through
+    }
+    return `BigQuery validation failed (${res.status})`;
+  } catch (error) {
+    if (timedOut) return timeoutMessage;
+    throw error;
+  } finally {
+    options.signal?.removeEventListener("abort", abortFromCaller);
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+export async function runQuery(
+  sql: string,
+  options: RunQueryOptions = {},
+): Promise<QueryResult> {
+  assertReadOnlySql(sql, "bigquery");
+  const { signal } = options;
+  throwIfAborted(signal);
+  const { projectId, cacheScope, appEventsTable } = await getProjectInfo();
+  const resolvedSql = await resolveTablePlaceholder(
+    sql,
+    projectId,
+    appEventsTable,
+  );
+  const cacheableSql = addUtcDateCacheKey(resolvedSql);
+
+  const cacheKey = getCacheKey(cacheableSql, projectId, cacheScope);
+  const l1Hit = getL1(cacheKey);
+  if (l1Hit) {
+    return { ...l1Hit, cached: true };
+  }
+  const l2Hit = await getL2(cacheKey);
+  if (l2Hit) {
+    setL1(cacheKey, l2Hit);
+    return { ...l2Hit, cached: true };
+  }
+
+  const token = await getAccessToken();
+  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`;
+
+  throwIfAborted(signal);
+  const res = await fetch(url, {
+    method: "POST",
+    ...(signal ? { signal } : {}),
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      query: cacheableSql,
+      useLegacySql: false,
+      maximumBytesBilled: "750000000000", // 750GB cap
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`BigQuery API error ${res.status}: ${text}`);
+  }
+
+  let data = (await res.json()) as BigQueryQueryResponse;
+
+  if (!data.jobComplete && data.jobReference?.jobId) {
+    const jobId = data.jobReference.jobId;
+    const resultsUrl = `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries/${jobId}`;
+
+    let attempts = 0;
+    try {
+      while (!data.jobComplete && attempts < 60) {
+        await waitForPollInterval(signal);
+        throwIfAborted(signal);
+        const pollRes = await fetch(resultsUrl, {
+          ...(signal ? { signal } : {}),
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+        if (!pollRes.ok) {
+          const text = await pollRes.text();
+          throw new Error(`BigQuery poll error ${pollRes.status}: ${text}`);
+        }
+        data = (await pollRes.json()) as BigQueryGetQueryResultsResponse;
+        attempts++;
+      }
+    } catch (error) {
+      if (signal?.aborted) {
+        await cancelQueryJob(projectId, jobId, token);
+      }
+      throw error;
+    }
+
+    if (!data.jobComplete) {
+      await cancelQueryJob(projectId, jobId, token);
+      throw new Error("BigQuery query timed out after 60 seconds");
+    }
+  }
+
+  const fields = data.schema?.fields ?? [];
+  const schema = fields.map((f) => ({
+    name: f.name,
+    type: f.type,
+  }));
+
+  const rows = data.rows ? rowsToObjects(data.rows, fields) : [];
+  const bytesProcessed = parseInt(data.totalBytesProcessed || "0", 10);
+
+  const reportedTotal = Number.parseInt(data.totalRows || "", 10);
+  const totalRows = Number.isFinite(reportedTotal)
+    ? reportedTotal
+    : rows.length;
+
+  const result: QueryResult = {
+    rows,
+    totalRows,
+    schema,
+    bytesProcessed,
+    ...(totalRows > rows.length ? { truncated: true } : {}),
+  };
+
+  setL1(cacheKey, result);
+  const l2Persistence = setL2(cacheKey, cacheableSql, result);
+  const waitUntil = getRequestRunContext()?.waitUntil;
+  if (waitUntil) waitUntil(l2Persistence);
+  else await l2Persistence;
+
+  return result;
+}

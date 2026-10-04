@@ -1,0 +1,416 @@
+// @vitest-environment happy-dom
+
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  demoModeEnabled: false,
+  query: {
+    data: {
+      rows: [{ value: 42 }] as Record<string, unknown>[],
+    },
+    isLoading: false,
+    isFetching: false,
+    error: null as Error | null,
+    refetch: vi.fn(),
+  },
+  queryEnabled: undefined as boolean | undefined,
+  queryKey: null as string[] | null,
+  createDemoChartTrendRows: vi.fn((rows: Record<string, unknown>[]) => rows),
+  embeddedExtensionProps: null as Record<string, unknown> | null,
+}));
+
+vi.mock("@agent-native/core/client/hooks", () => ({
+  useDemoModeStatus: () => ({
+    enabled: mocks.demoModeEnabled,
+    forced: false,
+    isLoading: false,
+  }),
+}));
+
+vi.mock("@agent-native/core/client/i18n", () => ({
+  useT: () => (key: string) => key,
+}));
+
+vi.mock("@/lib/demo-chart-trend", () => ({
+  createDemoChartTrendRows: mocks.createDemoChartTrendRows,
+}));
+
+vi.mock("@/lib/sql-query", () => ({
+  useSqlQuery: (
+    queryKey: string[],
+    _sql: string,
+    _source: string,
+    options?: { enabled?: boolean },
+  ) => {
+    mocks.queryKey = queryKey;
+    mocks.queryEnabled = options?.enabled;
+    return mocks.query;
+  },
+}));
+
+vi.mock("@agent-native/toolkit/app/extensions", () => ({
+  EmbeddedExtension: (props: Record<string, unknown>) => {
+    mocks.embeddedExtensionProps = props;
+    return null;
+  },
+  ExtensionSlot: () => null,
+}));
+
+import { formatSqlChartError, limitChartRows, SqlChart } from "./SqlChart";
+
+describe("limitChartRows", () => {
+  it("keeps tables untouched and bounds chart point rendering", () => {
+    const rows = Array.from({ length: 401 }, (_, index) => ({ index }));
+    expect(limitChartRows(rows, "table")).toBe(rows);
+    expect(limitChartRows(rows, "line")).toEqual(rows.slice(-400));
+    expect(limitChartRows(rows, "heatmap")).toEqual(rows.slice(-400));
+    expect(limitChartRows(rows, "bar")).toEqual(rows.slice(0, 400));
+    expect(limitChartRows(rows, "pie")).toEqual(rows.slice(0, 400));
+    expect(limitChartRows(rows, "funnel")).toEqual(rows.slice(0, 400));
+    expect(limitChartRows(rows, "callout")).toEqual(rows.slice(0, 400));
+  });
+});
+
+describe("SqlChart refresh feedback", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    mocks.demoModeEnabled = false;
+    mocks.query.data = { rows: [{ value: 42 }] };
+    mocks.query.isLoading = false;
+    mocks.query.isFetching = false;
+    mocks.query.error = null;
+    mocks.query.refetch = vi.fn();
+    mocks.queryEnabled = undefined;
+    mocks.queryKey = null;
+    mocks.embeddedExtensionProps = null;
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("restores the panel skeleton while cached data is refetching", async () => {
+    const panel = {
+      id: "signups",
+      title: "Signups",
+      sql: "SELECT 42 AS value",
+      source: "first-party" as const,
+      chartType: "metric" as const,
+      width: 1,
+    };
+
+    await act(async () => {
+      root.render(<SqlChart panel={panel} />);
+    });
+
+    expect(mocks.queryEnabled).toBe(true);
+    expect(container.textContent).toContain("42");
+    expect(
+      container.querySelector('[data-dashboard-report-loading="true"]'),
+    ).toBeNull();
+
+    mocks.query.isFetching = true;
+    await act(async () => {
+      root.render(<SqlChart panel={panel} />);
+    });
+
+    const loadingSkeleton = container.querySelector(
+      '[data-dashboard-report-loading="true"]',
+    );
+    expect(loadingSkeleton).not.toBeNull();
+    expect(loadingSkeleton?.className).toContain("skeleton-shimmer");
+    expect(loadingSkeleton?.className).toContain(
+      "analytics-dashboard-panel-skeleton",
+    );
+    expect(container.textContent).not.toContain("42");
+
+    mocks.query.isFetching = false;
+    await act(async () => {
+      root.render(<SqlChart panel={panel} />);
+    });
+
+    expect(
+      container.querySelector('[data-dashboard-report-loading="true"]'),
+    ).toBeNull();
+    expect(container.textContent).toContain("42");
+  });
+
+  it("renders cached data without starting a query when loading is disabled", async () => {
+    const panel = {
+      id: "signups",
+      title: "Signups",
+      sql: "SELECT 42 AS value",
+      source: "first-party" as const,
+      chartType: "metric" as const,
+      width: 1,
+    };
+
+    await act(async () => {
+      root.render(
+        <SqlChart
+          panel={panel}
+          dashboardId="dashboard-1"
+          loadData={false}
+          showLoadingWhenDisabled={false}
+        />,
+      );
+    });
+
+    expect(mocks.queryEnabled).toBe(false);
+    expect(mocks.queryKey).toEqual([
+      "sql-chart",
+      "dashboard-1",
+      "SELECT 42 AS value",
+      "first-party",
+    ]);
+    expect(container.textContent).toContain("42");
+    expect(
+      container.querySelector('[data-dashboard-report-loading="true"]'),
+    ).toBeNull();
+  });
+
+  it("renders a review result override without querying the active org", async () => {
+    const panel = {
+      id: "customer-orders",
+      title: "Customer orders",
+      sql: "SELECT total FROM orders",
+      source: "bigquery" as const,
+      chartType: "metric" as const,
+      width: 1,
+    };
+    mocks.query.data = { rows: [{ total: 1 }] };
+
+    await act(async () => {
+      root.render(
+        <SqlChart
+          panel={panel}
+          loadData={false}
+          resultOverride={{ rows: [{ total: 42 }] }}
+          showLoadingWhenDisabled={false}
+        />,
+      );
+    });
+
+    expect(mocks.queryEnabled).toBe(false);
+    expect(container.textContent).toContain("42");
+    expect(container.textContent).not.toContain("1");
+  });
+
+  it("does not show a loading skeleton when disabled without cached data", async () => {
+    const panel = {
+      id: "signups",
+      title: "Signups",
+      sql: "SELECT 42 AS value",
+      source: "first-party" as const,
+      chartType: "metric" as const,
+      width: 1,
+    };
+    mocks.query.data = { rows: [] };
+
+    await act(async () => {
+      root.render(
+        <SqlChart
+          panel={panel}
+          loadData={false}
+          showLoadingWhenDisabled={false}
+        />,
+      );
+    });
+
+    expect(mocks.queryEnabled).toBe(false);
+    expect(container.textContent).toContain("common.noData");
+    expect(
+      container.querySelector('[data-dashboard-report-loading="true"]'),
+    ).toBeNull();
+  });
+
+  it("reshapes line data only while Demo mode is enabled", async () => {
+    const panel = {
+      id: "signups-over-time",
+      title: "Signups over time",
+      sql: "SELECT date, value FROM signups",
+      source: "first-party" as const,
+      chartType: "line" as const,
+      width: 1,
+      config: { xKey: "date", yKey: "value" },
+    };
+    mocks.query.data = {
+      rows: [
+        { date: "2026-07-01", value: 5 },
+        { date: "2026-07-02", value: 2 },
+        { date: "2026-07-03", value: 9 },
+      ],
+    };
+
+    await act(async () => {
+      root.render(<SqlChart panel={panel} />);
+    });
+    expect(mocks.createDemoChartTrendRows).not.toHaveBeenCalled();
+
+    mocks.demoModeEnabled = true;
+    await act(async () => {
+      root.render(<SqlChart panel={panel} />);
+    });
+
+    expect(mocks.createDemoChartTrendRows).toHaveBeenCalledWith(
+      mocks.query.data.rows,
+      ["value"],
+      "signups-over-time",
+    );
+  });
+
+  it("shows an extension skeleton until the embedded extension is ready", async () => {
+    const panel = {
+      id: "github-metrics",
+      title: "GitHub metrics",
+      sql: "",
+      source: "first-party" as const,
+      chartType: "extension" as const,
+      width: 1,
+      config: { extensionId: "extension-1" },
+    };
+
+    await act(async () => {
+      root.render(<SqlChart panel={panel} />);
+    });
+
+    expect(
+      container.querySelector('[data-dashboard-extension-loading="true"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-dashboard-report-loading="true"]'),
+    ).not.toBeNull();
+
+    await act(async () => {
+      (mocks.embeddedExtensionProps?.onReady as (() => void) | undefined)?.();
+    });
+
+    expect(
+      container.querySelector('[data-dashboard-extension-loading="true"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-dashboard-report-loading="true"]'),
+    ).toBeNull();
+  });
+
+  it("shows a readable retry action when a chart query fails", async () => {
+    const panel = {
+      id: "signups",
+      title: "Signups",
+      sql: "SELECT 42 AS value",
+      source: "first-party" as const,
+      chartType: "metric" as const,
+      width: 1,
+    };
+    mocks.query.data = { rows: [] };
+    mocks.query.error = new Error(
+      "Action query-dashboard-panel failed: <HTML><TITLE>Inactivity Timeout</TITLE><BODY>Description: Too much time has passed</BODY>",
+    );
+
+    await act(async () => {
+      root.render(<SqlChart panel={panel} />);
+    });
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "This chart took too long to load. Try again.",
+    );
+    const retryButton = container.querySelector("button");
+    expect(retryButton?.textContent).toContain("sqlDashboard.refresh");
+
+    await act(async () => {
+      retryButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(mocks.query.refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not expose a retry for a disabled query with a cached error", async () => {
+    const panel = {
+      id: "signups",
+      title: "Signups",
+      sql: "SELECT 42 AS value",
+      source: "first-party" as const,
+      chartType: "metric" as const,
+      width: 1,
+    };
+    mocks.query.data = { rows: [] };
+    mocks.query.error = new Error("Cached query failed");
+
+    await act(async () => {
+      root.render(
+        <SqlChart
+          panel={panel}
+          dashboardId="dashboard-1"
+          loadData={false}
+          showLoadingWhenDisabled={false}
+        />,
+      );
+    });
+
+    expect(mocks.queryEnabled).toBe(false);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "Cached query failed",
+    );
+    expect(container.querySelector("button")).toBeNull();
+    expect(mocks.query.refetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps the skeleton while a normal dashboard chart is offscreen", async () => {
+    const panel = {
+      id: "signups",
+      title: "Signups",
+      sql: "SELECT 42 AS value",
+      source: "first-party" as const,
+      chartType: "metric" as const,
+      width: 1,
+    };
+    mocks.query.data = { rows: [] };
+
+    await act(async () => {
+      root.render(<SqlChart panel={panel} loadData={false} />);
+    });
+
+    expect(mocks.queryEnabled).toBe(false);
+    expect(
+      container.querySelector('[data-dashboard-report-loading="true"]'),
+    ).not.toBeNull();
+    expect(container.textContent).not.toContain("common.noData");
+  });
+
+  it("hides abort implementation details and keeps error text word-wrapped", async () => {
+    expect(
+      formatSqlChartError(new Error("signal is aborted without reason")),
+    ).toBe("This chart load was interrupted. Try again.");
+
+    const panel = {
+      id: "signups",
+      title: "Signups",
+      sql: "SELECT 42 AS value",
+      source: "first-party" as const,
+      chartType: "metric" as const,
+      width: 1,
+    };
+    mocks.query.data = { rows: [] };
+    mocks.query.error = new Error(
+      "A provider returned a very long error message that should wrap at word boundaries instead of breaking every word",
+    );
+
+    await act(async () => {
+      root.render(<SqlChart panel={panel} />);
+    });
+
+    const message = container.querySelector('[role="alert"] p');
+    expect(message?.className).toContain("break-words");
+    expect(message?.className).not.toContain("break-all");
+  });
+});
