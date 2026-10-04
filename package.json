@@ -29,6 +29,21 @@
   },
   "packageManager": "pnpm@10.29.1",
   "agent-native": {
-    "workspaceCore": "@swafford-workspace/shared"
+    "workspaceCore": "@swafford-workspace/shared",
+    "builtinAgents": {
+      "mode": "selected",
+      "include": [
+        "dispatch",
+        "chat",
+        "content",
+        "brain",
+        "assets",
+        "slides",
+        "analytics",
+        "clips",
+        "design",
+        "plan"
+      ]
+    }
   }
 }

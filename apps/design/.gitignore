@@ -42,3 +42,5 @@ learnings.md
 data/pglite/
 .agent-native/
 data/*.lock
+
+.generated/

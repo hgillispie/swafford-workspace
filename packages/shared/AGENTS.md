@@ -33,6 +33,25 @@ helpers stay available as opt-in skills for the apps that use them.
 Add company, product, compliance, or support-context notes that every app
 agent should know.
 
+## Adding an app
+
+Do exactly this and nothing else:
+
+1. From inside `swafford-workspace`, run
+   `npx @agent-native/core@latest add-app <app-name> --template <template-id>`.
+2. First-party template ids only, unless a later instruction gives a pinned
+   public community repo (`community:owner/repo#<ref>`). Never install `mail`,
+   `calendar`, or `forms` unless explicitly asked.
+3. Add the new id to `agent-native.builtinAgents.include` in the root
+   `package.json` (mode stays `"selected"`).
+4. Run `pnpm install` at the workspace root, then `pnpm dev`. The new app
+   inherits this shared package, the root `.env`, the shared `DATABASE_URL`,
+   and the existing login. Do not create a new repo, a new auth secret, an
+   `apps/<name>/.env` with its own `DATABASE_URL`, or a separate origin.
+5. When the workspace is deployed, use one origin via
+   `npx @agent-native/core@latest deploy` so the session stays shared. Do not
+   deploy each app on its own domain.
+
 ## Core Rules
 
 - UI feedback: target 100 ms, never exceed 400 ms; acknowledge before network work.
