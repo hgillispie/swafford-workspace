@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./launch": {
+      "types": "./dist/launch.d.ts",
+      "development": "./src/launch.ts",
+      "default": "./dist/launch.js"
     }
   },
   "scripts": {

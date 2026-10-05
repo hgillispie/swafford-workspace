@@ -1,5 +1,6 @@
 import { sendToAgentChat, setAgentChatContextItem } from "@agent-native/core/client/agent-chat";
 import { callAction, useActionQuery } from "@agent-native/core/client/hooks";
+import { isStartingRenderer } from "@swafford-workspace/media-core";
 import {
   deleteClientAppState,
   writeClientAppState,
@@ -363,6 +364,9 @@ export default function EditorRoute() {
   const jobProgress = (sync.data?.jobs ?? []).find(
     (job) => job.status === "running" || job.status === "queued",
   );
+  const startingRenderer = jobProgress
+    ? isStartingRenderer(jobProgress)
+    : false;
   const transcribing =
     importState?.phase === "transcribing" ||
     (project.transcriptStatus === "processing" && !staleProcessing);
@@ -408,6 +412,7 @@ export default function EditorRoute() {
   } else if (transcribing && !hasTranscript) {
     body = (
       <TranscribingState
+        starting={startingRenderer}
         progress={
           importState?.phase === "transcribing"
             ? importState.progress
@@ -561,7 +566,11 @@ export default function EditorRoute() {
             >
               Clean up with agent
             </Button>
-            {transcribing && hasTranscript ? (
+            {startingRenderer ? (
+              <span className="ml-auto text-[12px] text-muted-foreground">
+                Starting renderer…
+              </span>
+            ) : transcribing && hasTranscript ? (
               <span className="ml-auto text-[12px] text-muted-foreground">
                 Re-transcribing…
               </span>
@@ -668,11 +677,13 @@ function ExportJobs({
               {job.kind.replace("-", " ")}
             </span>
             <span className="text-muted-foreground">
-              {job.status}
+              {isStartingRenderer(job)
+                ? "Starting renderer…"
+                : job.status}
               {job.status === "running" ? ` · ${job.progress}%` : ""}
             </span>
           </div>
-          {job.progressLabel ? (
+          {job.progressLabel && !isStartingRenderer(job) ? (
             <p className="mt-1 text-muted-foreground">{job.progressLabel}</p>
           ) : null}
           {job.error ? (

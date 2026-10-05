@@ -25,6 +25,10 @@ COPY . .
 RUN pnpm install --frozen-lockfile --filter media-worker...
 
 WORKDIR /repo/services/media-worker
+# Scratch lives on the machine rootfs (/tmp). Each job downloads its source
+# into a temp directory and deletes it before the next job. Do not mount a
+# volume here: a stopped machine resets this disk (persist_rootfs = never).
 ENV MEDIA_WORKDIR=/tmp/media-worker
+ENV MEDIA_WORKER_IDLE_MINUTES=5
 ENV TRANSCRIPTION_PROVIDER=builder
 CMD ["pnpm", "start"]

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "agent-native dev",
+    "worker:dev": "pnpm --filter media-worker dev",
     "build": "pnpm -r build",
     "prebuild": "agent-native doctor --strict",
     "doctor": "agent-native doctor",

@@ -1,4 +1,5 @@
 import { sendToAgentChat } from "@agent-native/core/client/agent-chat";
+import { isStartingRenderer } from "@swafford-workspace/media-core";
 import {
   actionErrorMessage,
   callAction,
@@ -84,7 +85,9 @@ export default function ProjectRoute() {
           {project.transcriptStatus}
           {project.durationMs ? ` · ${clock(project.durationMs)}` : ""}
           {active
-            ? ` · ${active.progressLabel || active.kind} ${active.progress}%`
+            ? isStartingRenderer(active)
+              ? " · Starting renderer…"
+              : ` · ${active.progressLabel || active.kind} ${active.progress}%`
             : ""}
         </p>
         <div className="mt-5 overflow-hidden rounded-md bg-black">
@@ -98,7 +101,9 @@ export default function ProjectRoute() {
           ) : (
             <div className="flex aspect-video items-center justify-center text-sm text-white/70">
               {project.hasSource
-                ? "Proxy is encoding."
+                ? active && isStartingRenderer(active)
+                  ? "Starting renderer…"
+                  : "Proxy is encoding."
                 : "Waiting for the source file."}
             </div>
           )}

@@ -1,0 +1,30 @@
+# On-demand ffmpeg worker. Deploy from the workspace root so the Docker
+# build context includes the monorepo:
+#   fly deploy --config services/media-worker/fly.toml --dockerfile services/media-worker/Dockerfile
+#
+# No HTTP service. Cutline and Opus start the stopped machine with the
+# Machines API. Exit 0 after the queue is idle does not restart it
+# (on-failure). A crash still retries.
+
+app = "swafford-media-worker"
+primary_region = "iad"
+
+[build]
+  # Path is relative to the workspace root, which is the Docker build context:
+  #   fly deploy . --config services/media-worker/fly.toml --ha=false
+  dockerfile = "services/media-worker/Dockerfile"
+
+[env]
+  MEDIA_WORKDIR = "/tmp/media-worker"
+  MEDIA_WORKER_IDLE_MINUTES = "5"
+  TRANSCRIPTION_PROVIDER = "builder"
+
+[[restart]]
+  policy = "on-failure"
+  retries = 3
+
+[[vm]]
+  size = "performance-4x"
+  memory = "8gb"
+  # Ephemeral root disk. Stopped machines boot clean; originals are not kept.
+  persist_rootfs = "never"

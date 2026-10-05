@@ -17,6 +17,18 @@ export type MediaJobStatus =
   | "failed"
   | "cancelled";
 
+/** Shown while a queued job is waiting for a stopped worker to boot. */
+export const STARTING_RENDERER_LABEL = "Starting renderer…";
+
+export function isStartingRenderer(job: {
+  status: string;
+  progressLabel?: string | null;
+}): boolean {
+  return (
+    job.status === "queued" && job.progressLabel === STARTING_RENDERER_LABEL
+  );
+}
+
 export const MEDIA_JOBS_MIGRATION_NAME = "media-jobs-queue";
 
 /** Additive, shared queue. Safe to run from every app boot and the worker. */

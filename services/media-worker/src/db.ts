@@ -38,6 +38,22 @@ export async function migrateJobs(): Promise<void> {
   await db().unsafe(MEDIA_JOBS_SQL);
 }
 
+export async function countOpenJobs(): Promise<number> {
+  const rows = await db()`
+    SELECT COUNT(*)::int AS count
+    FROM media_jobs
+    WHERE status IN ('queued', 'running')
+  `;
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function closeDb(): Promise<void> {
+  if (!client) return;
+  const current = client;
+  client = null;
+  await current.end({ timeout: 5 });
+}
+
 export async function claimJob(workerId: string): Promise<JobRow | null> {
   const now = Date.now();
   const staleBefore = now - 90_000;

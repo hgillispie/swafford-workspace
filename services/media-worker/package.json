@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
+    "dev": "node --env-file-if-exists=.env.local --import tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
   },

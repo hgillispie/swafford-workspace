@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { dirname, extname, join } from "node:path";
@@ -25,7 +23,6 @@ import {
   progressFromFfmpeg,
   removeTemp,
   runFfmpeg,
-  workdir,
 } from "./ffmpeg.js";
 import { transcribeFile } from "./transcribe.js";
 
@@ -35,22 +32,10 @@ async function throwIfCancelled(id: string): Promise<void> {
   if (await isCancelled(id)) throw new JobCancelled();
 }
 
-const downloads = new Map<string, Promise<string>>();
-
-async function localObject(key: string): Promise<string> {
-  const existing = downloads.get(key);
-  if (existing) return existing;
-  const pending = (async () => {
-    const hash = createHash("sha1").update(key).digest("hex").slice(0, 16);
-    const dest = join(workdir(), "objects", `${hash}${extname(key) || ".bin"}`);
-    if (!existsSync(dest)) {
-      await mkdir(dirname(dest), { recursive: true });
-      await downloadToFile(key, dest);
-    }
-    return dest;
-  })();
-  downloads.set(key, pending);
-  return pending;
+async function localObject(key: string, dir: string): Promise<string> {
+  const dest = join(dir, `source${extname(key) || ".bin"}`);
+  await downloadToFile(key, dest);
+  return dest;
 }
 
 function payloadOf(row: JobRow): Record<string, unknown> {
@@ -85,7 +70,7 @@ async function renderProxy(
   const dir = await makeTempDir("proxy-");
   try {
     await setProgress(row.id, 5, "Downloading source");
-    const source = await localObject(sourceKey);
+    const source = await localObject(sourceKey, dir);
     await throwIfCancelled(row.id);
     const output = join(dir, "proxy.mp4");
     const probed = await probeMedia(source);
@@ -150,7 +135,7 @@ async function extractAudio(
   const dir = await makeTempDir("audio-");
   try {
     await setProgress(row.id, 8, "Extracting audio");
-    const source = await localObject(sourceKey);
+    const source = await localObject(sourceKey, dir);
     const full = join(dir, "full.mp3");
     await runFfmpeg([
       "-i",
@@ -295,7 +280,7 @@ async function renderCutline(
   const dir = await makeTempDir("cut-");
   try {
     await setProgress(row.id, 5, "Downloading original");
-    const source = await localObject(sourceKey);
+    const source = await localObject(sourceKey, dir);
     const probed = await probeMedia(source);
     const durationMs = Number(payload.mediaDurationMs ?? probed.durationMs) || probed.durationMs;
     const composition = buildComposition(words, durationMs);
@@ -457,7 +442,7 @@ async function renderOpus(
   const dir = await makeTempDir("opus-");
   try {
     await setProgress(row.id, 8, "Preparing clip");
-    const source = await localObject(sourceKey);
+    const source = await localObject(sourceKey, dir);
     const clip = join(dir, "clip.mp4");
     const start = (startMs / 1000).toFixed(3);
     const end = (endMs / 1000).toFixed(3);

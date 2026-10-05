@@ -36,8 +36,17 @@ All configuration is environment variables.
 | `DEEPGRAM_API_KEY` | for Deepgram | |
 | `ASSEMBLYAI_API_KEY` | for AssemblyAI | |
 | `WHISPER_MODEL` | no | faster-whisper model. Default `tiny`. `base` or `small` are more accurate and slower. |
-| `MEDIA_WORKDIR` | no | Scratch disk. Default `/tmp/media-worker`. Point this at a large volume. |
+| `MEDIA_WORKDIR` | no | Scratch disk. Default `/tmp/media-worker`. Each job deletes its download when it finishes. |
 | `MEDIA_WORKER_ID` | no | Lock owner id. Default is a random id per process. |
+| `MEDIA_WORKER_IDLE_MINUTES` | no | Exit after the queue has been empty this long. Default `5`. `0` stays up. |
+| `WORKER_LAUNCHER` | no | `fly` or `local` (also `noop`). Set on the **apps**, not required on the worker. Default is `fly` when `FLY_API_TOKEN` and `FLY_APP` are set, otherwise `local`. |
+| `FLY_API_TOKEN` | for Fly wake | Deploy token that can start Machines. Netlify env. |
+| `FLY_APP` | for Fly wake | Fly app name, for example `swafford-media-worker`. |
+| `FLY_MACHINE_ID` | for Fly wake | Id of the pre-created machine. Without it, the launcher uses the machine named `media-worker`, or creates one when `FLY_IMAGE` is set. |
+| `FLY_IMAGE` | to create a machine | Registry image, only if no machine exists yet. |
+| `FLY_MACHINE_SIZE` | no | Default `performance-4x` (4 dedicated vCPU, 8 GB). |
+| `FLY_REGION` | no | Default `iad`. |
+| `FLY_ROOTFS_GB` | no | Ephemeral root disk when the launcher creates a machine. Default `80`. |
 
 Transcription is behind `src/transcribe.ts`. Builder.io ASR is the production default and matches Cutline. Whisper runs locally with no API key. Deepgram and AssemblyAI are drop-in when their keys are set.
 
@@ -61,19 +70,32 @@ docker run --rm \
   -e B2_KEY_ID -e B2_APPLICATION_KEY \
   -e TRANSCRIPTION_PROVIDER=builder \
   -e BUILDER_PRIVATE_KEY \
-  -e MEDIA_WORKDIR=/data \
-  -v media-tmp:/data \
+  -e MEDIA_WORKDIR=/tmp/media-worker \
+  -e MEDIA_WORKER_IDLE_MINUTES=5 \
   swafford-media-worker
 ```
 
 The image is Debian bookworm, Node 22, ffmpeg, OpenCV (Haar face tracking), DejaVu and Liberation fonts, and faster-whisper. No GPU runtime. H.264 encoding is CPU (`libx264`).
 
+There is no persistent volume. A job downloads its original into `MEDIA_WORKDIR`, uploads the result, and deletes that directory. The next start of a stopped Fly machine also resets the root disk (`persist_rootfs = never`).
+
+## Idle exit and wake
+
+After the queue has no `queued` or `running` rows for `MEDIA_WORKER_IDLE_MINUTES` (default 5), the process exits 0. `[[restart]] policy = "on-failure"` leaves the machine stopped. A non-zero crash can still retry.
+
+Cutline and Opus call `launchMediaWorker()` from `@swafford-workspace/media-core/launch` after they insert a job. The Fly adapter starts the existing machine, or creates one from `FLY_IMAGE` if none exists. Starting an already-started machine is a no-op. The local adapter does nothing, which is what a Mac uses while `docker compose` or `pnpm worker:dev` is already polling. See `MAC-TESTING.md`.
+
+While a job is still `queued` because the machine was stopped, the apps set the progress label to `Starting renderer…`.
+
 ## Fly.io
 
+One `performance-4x` machine (4 dedicated vCPU, 8 GB RAM). No GPU. Do not autoscale past one.
+
+From the workspace root, after `fly auth login`:
+
 ```bash
-fly launch --no-deploy --name swafford-media-worker --dockerfile services/media-worker/Dockerfile
-fly volumes create media_tmp --size 100 --region iad
-fly secrets set \
+fly apps create swafford-media-worker
+fly secrets set --app swafford-media-worker \
   DATABASE_URL="postgres://…" \
   B2_S3_ENDPOINT="https://s3.us-east-005.backblazeb2.com" \
   B2_REGION="us-east-005" \
@@ -81,14 +103,23 @@ fly secrets set \
   B2_KEY_ID="…" \
   B2_APPLICATION_KEY="…" \
   TRANSCRIPTION_PROVIDER="builder" \
-  BUILDER_PRIVATE_KEY="…"
+  BUILDER_PRIVATE_KEY="…" \
+  MEDIA_WORKER_IDLE_MINUTES="5" \
+  MEDIA_WORKDIR="/tmp/media-worker"
+fly deploy . --config services/media-worker/fly.toml --ha=false
+fly machine update <id> --app swafford-media-worker \
+  --vm-size performance-4x --memory 8192 \
+  --rootfs-size 80gb --rootfs-persist never -y
+fly machine stop <id> --app swafford-media-worker
 ```
 
-Mount the volume at `/data` and set `MEDIA_WORKDIR=/data` in `fly.toml`. One machine is enough. Do not autoscale past one until you are comfortable with two workers sharing the queue (the claim query allows it).
+`fly.toml` sets the VM size and `persist_rootfs = never`. `--rootfs-size 80gb` is the scratch ceiling for one original plus its outputs (about three times a large file). That disk is billed while the machine exists, including when it is stopped. It is not a Fly Volume, and it does not keep footage.
 
-Suggested size for multi-GB 4K H.265 DJI originals: `performance-4x` (4 dedicated vCPU, 8 GB RAM) and a 100 GB volume. Face detection and encoding do not use a GPU. A 4 GB machine can OOM while decoding 4K. Scratch space should be at least three times the largest original (download + proxy + render).
+On Netlify, set `WORKER_LAUNCHER=fly`, `FLY_API_TOKEN` (a deploy token for this app: `fly tokens create deploy -a swafford-media-worker`), `FLY_APP=swafford-media-worker`, and `FLY_MACHINE_ID` to the id from `fly machines list`. Optional: `FLY_IMAGE` (only used to create a machine when the id is missing), `FLY_MACHINE_SIZE=performance-4x`, `FLY_REGION=iad`, `FLY_ROOTFS_GB=80`.
 
-Rough always-on cost for that Fly size is on the order of $120–160 per month plus volume storage (~$15 for 100 GB). Stopping the machine between batches drops the bill to mostly the volume. Hunter's Mac, running this same image, is the zero-marginal-cost option if it can stay awake with enough free disk.
+Published Fly prices as of 1 Oct 2026 (`https://fly.io/pricing/`): `performance-4x` · 8 GB is **$0.1833 per hour** ($0.00005092 per second) while the machine is running, and a stopped machine’s rootfs is **$0.15 per GB per month**. Always-on for this preset is about **$132 per month** before disk. The worked example for a month of edits is in the pull request. A 4 GB machine can run out of memory decoding 4K.
+
+Mac testing against Neon and B2 is `MAC-TESTING.md`. Production does not depend on that computer.
 
 ## Object layout
 

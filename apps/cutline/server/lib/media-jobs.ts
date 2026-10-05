@@ -1,3 +1,7 @@
+import {
+  launchMediaWorker,
+  launchStatusLabel,
+} from "@swafford-workspace/media-core/launch";
 import { and, desc, eq } from "drizzle-orm";
 
 import { getDb, schema } from "../db.js";
@@ -31,7 +35,21 @@ export async function enqueueMediaJob(input: {
       createdAt: now,
       updatedAt: now,
     });
+  await noteWorkerWake(id);
   return id;
+}
+
+async function noteWorkerWake(jobId: string): Promise<void> {
+  const launch = await launchMediaWorker();
+  const label = launchStatusLabel(launch);
+  if (launch.error) console.warn(`[cutline] media worker: ${launch.error}`);
+  if (!label) return;
+  await getDb()
+    .update(schema.mediaJobs)
+    .set({ progressLabel: label, updatedAt: nowIso() })
+    .where(
+      and(eq(schema.mediaJobs.id, jobId), eq(schema.mediaJobs.status, "queued")),
+    );
 }
 
 export async function jobsForSubject(subjectId: string) {

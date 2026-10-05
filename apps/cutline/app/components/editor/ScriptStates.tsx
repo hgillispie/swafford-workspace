@@ -70,9 +70,11 @@ export function UploadingState({ progress }: { progress: number }) {
 export function TranscribingState({
   progress,
   durationMs,
+  starting = false,
 }: {
   progress: number | null;
   durationMs: number;
+  starting?: boolean;
 }) {
   const percent = progress === null ? null : Math.round(progress * 100);
   const long = durationMs > 10 * 60 * 1000;
@@ -83,10 +85,12 @@ export function TranscribingState({
           className="flex items-center gap-2.5 text-[13px] font-medium text-muted-foreground"
           aria-live="polite"
         >
-          <Spinner className="size-4" />
-          {long
-            ? "Transcribing with word timing — long recordings take a few minutes. Keep this tab open."
-            : "Transcribing with word timing — usually under a minute"}
+          {starting ? null : <Spinner className="size-4" />}
+          {starting
+            ? "Starting renderer…"
+            : long
+              ? "Transcribing with word timing — long recordings take a few minutes. Keep this tab open."
+              : "Transcribing with word timing — usually under a minute"}
         </div>
         {percent !== null ? (
           <div className="flex max-w-xs items-center gap-3">
