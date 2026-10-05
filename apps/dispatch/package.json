@@ -16,9 +16,9 @@
     "doctor": "agent-native doctor"
   },
   "dependencies": {
-    "@agent-native/core": "0.200.0",
-    "@agent-native/dispatch": "latest",
-    "@agent-native/toolkit": "^0.200.0",
+    "@agent-native/core": "0.201.0-nightly-20261005153421",
+    "@agent-native/dispatch": "0.40.12-nightly-20261005153421",
+    "@agent-native/toolkit": "0.201.0-nightly-20261005153421",
     "@ai-sdk/openai": "^3.0.53",
     "@electric-sql/pglite": "^0.5.8",
     "@fontsource-variable/inter": "^5.2.8",
@@ -60,9 +60,9 @@
     "scaffold": {
       "template": "dispatch",
       "frameworkSkills": "default",
-      "templateRef": "@agent-native/core@0.200.0",
+      "templateRef": "@agent-native/core@0.201.0-nightly-20261005153421",
       "templateSource": "github",
-      "coreVersion": "0.200.0",
+      "coreVersion": "0.201.0-nightly-20261005153421",
       "shape": "workspace"
     }
   }
