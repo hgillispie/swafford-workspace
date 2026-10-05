@@ -28,6 +28,11 @@
     "typescript-7": "catalog:"
   },
   "packageManager": "pnpm@10.29.1",
+  "pnpm": {
+    "patchedDependencies": {
+      "@agent-native/core@0.200.0": "patches/@agent-native__core@0.200.0.patch"
+    }
+  },
   "agent-native": {
     "workspaceCore": "@swafford-workspace/shared",
     "builtinAgents": {

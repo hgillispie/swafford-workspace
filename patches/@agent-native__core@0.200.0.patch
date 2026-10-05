@@ -1,0 +1,15 @@
+diff --git a/dist/db/create-get-db.js b/dist/db/create-get-db.js
+--- a/dist/db/create-get-db.js
++++ b/dist/db/create-get-db.js
+@@ -658,6 +658,11 @@
+     });
+ }
+ export function isNeonUrl(url) {
++    // Opt out of the Neon serverless WebSocket driver. Netlify functions hang
++    // Better Auth transactions on that driver; postgres.js does not.
++    const driver = process.env.AGENT_NATIVE_DB_DRIVER?.trim().toLowerCase();
++    if (driver === "postgres" || driver === "postgres-js" || driver === "postgres.js")
++        return false;
+     return /\.neon\.tech([:/?]|$)/.test(url);
+ }
+ export function createGetDb(schema) {
