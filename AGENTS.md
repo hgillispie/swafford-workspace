@@ -297,3 +297,11 @@ When asked to repair workspace org or A2A configuration:
    it.
 
 - Guarded verification: run `pnpm agent-native:doctor`; fix findings before done.
+
+## Cursor Cloud specific instructions
+
+- `@agent-native/core` requires Node `>=22.22`. This environment installs Node 22.22.2 under `/usr/local/lib/nodejs` and prepends it from `/etc/profile.d/nodejs.sh`. Login shells pick that up; a bare `node` earlier on `PATH` can still be 22.14.
+- Install dependencies with `pnpm install --frozen-lockfile` (`packageManager` is `pnpm@10.29.1`).
+- Run the workspace with `pnpm dev`. The gateway is `http://127.0.0.1:8080`. Dispatch is `/dispatch`. Other apps start lazily at `/<app-id>` (for example `/chat`).
+- Leave `DATABASE_URL` empty to use local PGlite. Generate `BETTER_AUTH_SECRET` and `A2A_SECRET` in the root `.env` when those values are empty. Keep `.env` uncommitted. Set `ANTHROPIC_API_KEY` when agent chat should call a model; sign-up and the gateway work without it.
+- `pnpm agent-native:doctor` and `pnpm lint` currently report existing repository findings. A focused check that passes in this environment is `pnpm --filter dispatch exec vitest --run server/lib/settings-ssr-entry.spec.ts server/lib/org-apps-directory.spec.ts`.
