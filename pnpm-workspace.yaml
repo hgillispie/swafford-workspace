@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "apps/*"
+  - "services/*"
 
 # Netlify functions run linux-x64 glibc. Install those optional native
 # packages (sharp) even when this workspace is installed on a Mac.

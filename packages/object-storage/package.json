@@ -1,0 +1,29 @@
+{
+  "name": "@swafford-workspace/object-storage",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared Backblaze B2 / S3 client for workspace apps and the media worker.",
+  "type": "module",
+  "files": ["dist", "src"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepare": "tsc"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/lib-storage": "^3.1146.0",
+    "@aws-sdk/s3-request-presigner": "^3.1146.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "typescript-7": "catalog:"
+  }
+}

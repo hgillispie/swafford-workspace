@@ -1,0 +1,264 @@
+@import "@fontsource-variable/inter";
+
+@import "tailwindcss";
+@import "@agent-native/toolkit/styles.css";
+
+@source "./**/*.{ts,tsx}";
+
+:root {
+  --background: 210 17% 98%;
+  --foreground: 222 22% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 22% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 22% 12%;
+  --primary: 222 47% 28%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 16% 94%;
+  --secondary-foreground: 222 22% 16%;
+  --muted: 210 16% 95%;
+  --muted-foreground: 220 9% 43%;
+  --accent: 210 18% 93%;
+  --accent-foreground: 222 22% 14%;
+  --destructive: 358 70% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 210 15% 89%;
+  --input: 210 15% 86%;
+  --ring: 222 47% 28%;
+  --radius: 0.5rem;
+  --sidebar-background: 210 18% 96%;
+  --sidebar-foreground: 220 9% 40%;
+  --sidebar-primary: 222 47% 28%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 210 16% 91%;
+  --sidebar-accent-foreground: 222 22% 14%;
+  --sidebar-border: 210 15% 89%;
+  --sidebar-ring: 222 47% 28%;
+
+  --success: 152 45% 32%;
+  --warning: 36 80% 42%;
+  --playhead: 222 55% 42%;
+  --highlight: 222 40% 95%;
+  --selection: 222 50% 90%;
+  --cut: 220 8% 56%;
+  --cut-hatch: 210 14% 90%;
+  --speaker-1: 172 40% 34%;
+  --speaker-2: 24 45% 46%;
+  --speaker-3: 340 45% 50%;
+  --speaker-4: 204 55% 42%;
+  --speaker-5: 142 35% 36%;
+  --speaker-6: 42 55% 40%;
+  --stage: 222 22% 10%;
+  --stage-foreground: 210 20% 96%;
+}
+
+.dark {
+  --background: 222 18% 9%;
+  --foreground: 210 16% 92%;
+  --card: 222 16% 12%;
+  --card-foreground: 210 16% 92%;
+  --popover: 222 16% 13%;
+  --popover-foreground: 210 16% 92%;
+  --primary: 222 50% 62%;
+  --primary-foreground: 222 30% 10%;
+  --secondary: 222 13% 17%;
+  --secondary-foreground: 210 16% 92%;
+  --muted: 222 13% 16%;
+  --muted-foreground: 220 9% 62%;
+  --accent: 222 13% 18%;
+  --accent-foreground: 210 16% 94%;
+  --destructive: 358 72% 58%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 222 12% 20%;
+  --input: 222 12% 23%;
+  --ring: 222 50% 62%;
+  --sidebar-background: 222 18% 7%;
+  --sidebar-foreground: 220 9% 62%;
+  --sidebar-primary: 222 50% 62%;
+  --sidebar-primary-foreground: 222 30% 10%;
+  --sidebar-accent: 222 13% 15%;
+  --sidebar-accent-foreground: 210 16% 94%;
+  --sidebar-border: 222 12% 17%;
+  --sidebar-ring: 222 50% 62%;
+
+  --success: 152 40% 52%;
+  --warning: 38 80% 58%;
+  --playhead: 222 60% 68%;
+  --highlight: 222 35% 22%;
+  --selection: 222 40% 30%;
+  --cut: 224 8% 48%;
+  --cut-hatch: 222 12% 22%;
+  --speaker-1: 172 38% 48%;
+  --speaker-2: 24 45% 54%;
+  --speaker-3: 340 48% 62%;
+  --speaker-4: 204 55% 58%;
+  --speaker-5: 142 35% 50%;
+  --speaker-6: 42 55% 54%;
+  --stage: 222 20% 6%;
+  --stage-foreground: 210 20% 95%;
+}
+
+@theme inline {
+  --color-success: hsl(var(--success));
+  --color-warning: hsl(var(--warning));
+  --color-playhead: hsl(var(--playhead));
+  --color-highlight: hsl(var(--highlight));
+  --color-cut: hsl(var(--cut));
+  --color-speaker-1: hsl(var(--speaker-1));
+  --color-speaker-2: hsl(var(--speaker-2));
+  --color-speaker-3: hsl(var(--speaker-3));
+  --color-speaker-4: hsl(var(--speaker-4));
+  --color-speaker-5: hsl(var(--speaker-5));
+  --color-speaker-6: hsl(var(--speaker-6));
+  --color-stage: hsl(var(--stage));
+  --color-stage-foreground: hsl(var(--stage-foreground));
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Inter Variable", "Inter", sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* ── Script (transcript editor) ─────────────────────────────────────────── */
+
+.script-doc {
+  position: relative;
+  font-size: 17px;
+  line-height: 1.8;
+  letter-spacing: -0.005em;
+}
+
+.script-doc ::selection {
+  background: hsl(var(--selection));
+}
+
+.script-word {
+  cursor: text;
+}
+
+.script-w {
+  border-radius: 3px;
+  transition:
+    color 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+.script-word:hover .script-w {
+  background: hsl(var(--foreground) / 0.06);
+}
+
+.script-word[data-cut="true"] .script-w {
+  color: hsl(var(--cut));
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: hsl(var(--cut) / 0.85);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    hsl(var(--cut-hatch)) 0 1px,
+    transparent 1px 5px
+  );
+}
+
+.script-doc[data-hide-cuts="true"] .script-word[data-cut="true"] {
+  display: none;
+}
+
+.script-doc[data-preview="fillers"]
+  .script-word[data-filler="true"]:not([data-cut="true"])
+  .script-w {
+  background: hsl(var(--warning) / 0.2);
+  box-shadow: inset 0 -2px 0 hsl(var(--warning) / 0.75);
+}
+
+.script-word[data-corrected="true"] .script-w {
+  text-decoration: underline dotted hsl(var(--muted-foreground) / 0.6);
+  text-underline-offset: 4px;
+}
+
+.script-word[data-active="true"] .script-w {
+  color: hsl(var(--foreground));
+  background: hsl(var(--highlight));
+}
+
+.script-gap {
+  display: inline-block;
+  width: 1.15em;
+  height: 0.62em;
+  margin: 0 0.06em 0 0.22em;
+  border-radius: 999px;
+  vertical-align: 0.06em;
+  background:
+    radial-gradient(
+        circle,
+        hsl(var(--muted-foreground) / 0.55) 1.2px,
+        transparent 1.6px
+      )
+      center / 0.34em 100% repeat-x,
+    hsl(var(--muted));
+}
+
+.script-gap[data-trimmed="true"] {
+  background:
+    linear-gradient(
+      -60deg,
+      transparent calc(50% - 0.75px),
+      hsl(var(--primary) / 0.85) calc(50% - 0.75px) calc(50% + 0.75px),
+      transparent calc(50% + 0.75px)
+    ),
+    radial-gradient(
+        circle,
+        hsl(var(--muted-foreground) / 0.35) 1.2px,
+        transparent 1.6px
+      )
+      center / 0.34em 100% repeat-x,
+    hsl(var(--highlight));
+}
+
+.script-doc[data-preview="gaps"] .script-gap[data-candidate="true"] {
+  box-shadow: 0 0 0 1.5px hsl(var(--warning) / 0.85);
+}
+
+.script-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100px;
+  height: 2px;
+  border-radius: 1px;
+  background: hsl(var(--playhead));
+  pointer-events: none;
+  opacity: 0;
+  transform-origin: 0 0;
+  transition:
+    transform 110ms var(--ease-out-strong),
+    opacity 160ms ease-out;
+  will-change: transform;
+}
+
+.script-marker[data-visible="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .script-marker {
+    transition: opacity 160ms ease-out;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.22);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.34);
+}

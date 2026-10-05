@@ -1,0 +1,121 @@
+import {
+  bigint,
+  createSharesTable,
+  index,
+  integer,
+  now,
+  ownableColumns,
+  table,
+  text,
+} from "@agent-native/core/db/schema";
+
+export const projects = table(
+  "opus_projects",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    sourceKey: text("source_key"),
+    proxyKey: text("proxy_key"),
+    dumpFileId: text("dump_file_id"),
+    mediaFilename: text("media_filename"),
+    mediaMimeType: text("media_mime_type"),
+    mediaBytes: bigint("media_bytes", { mode: "number" }),
+    durationMs: integer("duration_ms").notNull().default(0),
+    mediaWidth: integer("media_width"),
+    mediaHeight: integer("media_height"),
+    transcriptStatus: text("transcript_status").notNull().default("none"),
+    transcriptError: text("transcript_error"),
+    transcriptSource: text("transcript_source"),
+    language: text("language"),
+    wordsJson: text("words_json").notNull().default("[]"),
+    captionStyle: text("caption_style").notNull().default("karaoke"),
+    captionFont: text("caption_font").notNull().default("dejavu"),
+    youtubeUrl: text("youtube_url"),
+    createdAt: text("created_at").notNull().default(now()),
+    updatedAt: text("updated_at").notNull().default(now()),
+    ...ownableColumns(),
+  },
+  (t) => [
+    index("opus_projects_owner_updated_idx").on(t.ownerEmail, t.updatedAt),
+    index("opus_projects_org_idx").on(t.orgId),
+  ],
+);
+
+export const projectShares = createSharesTable("opus_project_shares");
+
+export const clips = table(
+  "opus_clips",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull(),
+    title: text("title").notNull(),
+    startMs: integer("start_ms").notNull(),
+    endMs: integer("end_ms").notNull(),
+    score: integer("score").notNull().default(0),
+    reason: text("reason").notNull().default(""),
+    hook: integer("hook").notNull().default(0),
+    engagement: integer("engagement").notNull().default(0),
+    valueScore: integer("value_score").notNull().default(0),
+    shareability: integer("shareability").notNull().default(0),
+    source: text("source").notNull().default("agent"),
+    status: text("status").notNull().default("draft"),
+    outputKey: text("output_key"),
+    jobId: text("job_id"),
+    error: text("error"),
+    ownerEmail: text("owner_email").notNull().default(""),
+    orgId: text("org_id"),
+    createdAt: text("created_at").notNull().default(now()),
+  },
+  (t) => [index("opus_clips_project_idx").on(t.projectId, t.startMs)],
+);
+
+/** Dumps library rows. Dumps owns the migration; Opus reads and inserts uploads. */
+export const libraryFiles = table(
+  "dump_files",
+  {
+    id: text("id").primaryKey(),
+    folderId: text("folder_id"),
+    filename: text("filename").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    contentType: text("content_type"),
+    uploaderEmail: text("uploader_email").notNull(),
+    notes: text("notes"),
+    tags: text("tags"),
+    b2Key: text("b2_key").notNull(),
+    uploadId: text("upload_id"),
+    partSizeBytes: bigint("part_size_bytes", { mode: "number" }),
+    status: text("status").notNull().default("uploading"),
+    createdAt: text("created_at").notNull().default(now()),
+    ...ownableColumns(),
+  },
+  (t) => [index("dump_files_org_status_idx").on(t.orgId, t.status)],
+);
+
+export const mediaJobs = table(
+  "media_jobs",
+  {
+    id: text("id").primaryKey(),
+    app: text("app").notNull(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("queued"),
+    orgId: text("org_id"),
+    ownerEmail: text("owner_email").notNull().default(""),
+    subjectId: text("subject_id").notNull(),
+    payload: text("payload").notNull().default("{}"),
+    result: text("result"),
+    progress: integer("progress").notNull().default(0),
+    progressLabel: text("progress_label"),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    heartbeatAt: bigint("heartbeat_at", { mode: "number" }),
+    lockedBy: text("locked_by"),
+    runAfter: bigint("run_after", { mode: "number" }).notNull().default(0),
+    error: text("error"),
+    createdAt: text("created_at").notNull().default(now()),
+    updatedAt: text("updated_at").notNull().default(now()),
+  },
+  (t) => [
+    index("media_jobs_claim_idx").on(t.status, t.runAfter),
+    index("media_jobs_subject_idx").on(t.app, t.subjectId),
+  ],
+);

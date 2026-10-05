@@ -14,7 +14,7 @@
     "upgrade:agent-native": "agent-native upgrade",
     "fmt:check": "oxfmt --check .",
     "lint": "pnpm fmt:check",
-    "postinstall": "pnpm --filter ./packages/creative-context build && pnpm --filter ./packages/embedding build"
+    "postinstall": "pnpm --filter ./packages/creative-context build && pnpm --filter ./packages/embedding build && pnpm --filter ./packages/object-storage build && pnpm --filter ./packages/media-core build"
   },
   "dependencies": {
     "@agent-native/core": "0.201.0-nightly-20261005153421",
@@ -48,7 +48,9 @@
         "clips",
         "design",
         "plan",
-        "dumps"
+        "dumps",
+        "cutline",
+        "opus"
       ]
     }
   }
