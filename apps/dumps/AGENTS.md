@@ -56,9 +56,11 @@ id and application key are not. Missing key names are returned by `list-dumps`
 and shown in the library. Do not ask anyone to paste values into chat. Local
 runs also read a workspace root `.env` when a name is unset.
 
-`configure-dump-cors` allows `https://swafford-workspace.netlify.app` and
-localhost dev origins, methods GET, PUT, HEAD, and POST, header `*`, and
-exposes `ETag`.
+`configure-dump-cors` allows `https://swafford-workspace.netlify.app`,
+`http://localhost:8080`, `http://127.0.0.1:8080`, and localhost ports 3000
+and 5173, methods GET, PUT, HEAD, and POST, header `*`, and exposes `ETag`.
+The live bucket already has this rule under `workspaceUploads`. Do not call
+the action unless an origin is missing.
 
 Object keys look like `org/{orgId}/files/{id}/{filename}`.
 

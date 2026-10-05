@@ -40,9 +40,10 @@ stays open. Choose the same file from its row to resume. Already stored parts
 are skipped.
 
 `configure-dump-cors` writes the bucket CORS rule: production origin
-`https://swafford-workspace.netlify.app`, localhost dev origins, methods
-`GET`, `PUT`, `HEAD`, and `POST`, header `*`, and exposed `ETag`. The first
-upload tries the same rule.
+`https://swafford-workspace.netlify.app`, the workspace gateway on port
+8080, localhost ports 3000 and 5173, methods `GET`, `PUT`, `HEAD`, and
+`POST`, header `*`, and exposed `ETag`. The bucket already has this rule
+as `workspaceUploads`. Starting an upload does not change it.
 
 Preview and download use a 15-minute presigned GET. Preview is inline so an
 MP4 plays in the browser. Download uses an attachment disposition.

@@ -2,12 +2,7 @@ import { defineAction, fail } from "@agent-native/core/action";
 import { buildDeepLink } from "@agent-native/core/server";
 import { z } from "zod";
 
-import {
-  createUpload,
-  ensureBucketCors,
-  objectKey,
-  planParts,
-} from "../server/lib/b2.js";
+import { createUpload, objectKey, planParts } from "../server/lib/b2.js";
 import {
   assertFolderInOrg,
   dumpFiles,
@@ -22,7 +17,7 @@ const MAX_BYTES = 5 * 1024 * 1024 * 1024 * 1024;
 
 export default defineAction({
   description:
-    "Begin a private multipart upload. Returns the part size and upload id. The browser uploads bytes directly to Backblaze with sign-dump-parts, then calls complete-dump-upload. Do not send file bytes to this action.",
+    "Begin a private multipart upload. Returns the part size and upload id. The browser uploads bytes directly to Backblaze with sign-dump-parts, then calls complete-dump-upload. Do not send file bytes to this action. Bucket CORS is already configured; use configure-dump-cors only when an origin is missing.",
   schema: z.object({
     filename: z.string().trim().min(1).max(240).describe("Original filename."),
     sizeBytes: z
@@ -64,9 +59,7 @@ export default defineAction({
     const key = objectKey(orgId, id, filename);
     const { partSize, partCount } = planParts(sizeBytes);
     let uploadId: string;
-    let cors: { ok: boolean; message?: string };
     try {
-      cors = await ensureBucketCors();
       uploadId = await createUpload({
         key,
         contentType: contentType?.trim() || "application/octet-stream",
@@ -100,7 +93,6 @@ export default defineAction({
       uploadId,
       partSize,
       partCount,
-      cors,
       file: toFile(row),
       message: `Started upload for ${filename}.`,
       nextRequiredAction: "sign-dump-parts",
