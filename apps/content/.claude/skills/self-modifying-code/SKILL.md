@@ -34,10 +34,11 @@ Not all modifications are equal. Use this to decide what level of care is needed
 Tier 4 includes **all** of the following — not only editing package source:
 
 - Files under `node_modules/@agent-native/*` (core, dispatch, scheduling, …)
-- `pnpm.overrides`, `overrides`, `resolutions`, or `patchedDependencies` that
-  target any `@agent-native/*` package
-- `pnpm patch`, `pnpm patch-commit`, or local package patch artifacts for any
-  dependency
+- `pnpm.overrides`, `overrides`, or `resolutions` that target any
+  `@agent-native/*` package
+- Undocumented `pnpm patch` edits. A patch is allowed only when it lives in
+  `patches/`, is registered in `pnpm.patchedDependencies`, and is described in
+  `patches/README.md`
 - Invented "dispatch/core behavior" shims meant to paper over a version skew
   or failed upgrade
 
@@ -51,7 +52,8 @@ third-party package's add-style blueprint.
 
 When an older branch needs current packages, use **`agent-native upgrade`**
 (see the `upgrade-agent-native` skill). If upgrade or typecheck fails, fix
-**app** code or stop and ask — do not patch the framework.
+**app** code first. A framework patch is allowed only as a file in `patches/`
+that is registered and documented in `patches/README.md`.
 
 ## Git Checkpoint Pattern
 
@@ -102,10 +104,11 @@ only when `translations.locales` in `agent-native.config.ts` includes them.
 - Don't confuse readable package source with app-owned code: use
   `customizing-agent-native` and `agent-native eject` for supported ownership
   transfer
-- Don't use `pnpm patch` / `pnpm patch-commit`, commit `patches/` artifacts, or
-  add `pnpm.patchedDependencies` to "make the app run" after a version bump
-- Don't add `pnpm.overrides` / `patchedDependencies` / `resolutions` for
-  `@agent-native/*` to paper over a broken upgrade
+- Patches of `@agent-native/*` are allowed in this workspace. Put them in
+  `patches/`, register `pnpm.patchedDependencies`, and document each one in
+  `patches/README.md`. Do not hand-edit `node_modules/@agent-native/*`
+- Don't add `pnpm.overrides` or `resolutions` for `@agent-native/*` to paper
+  over a broken upgrade when a documented patch or an upgrade would do
 - Don't invent local dispatch/core behavior overrides when upgrade fails —
   run `npx @agent-native/core@latest upgrade`, then fix app-level errors only
 - Don't modify `.agents/skills/` or `AGENTS.md` unless explicitly requested

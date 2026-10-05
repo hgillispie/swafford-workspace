@@ -58,8 +58,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@agent-native/core": "0.200.0",
-    "@agent-native/toolkit": "^0.200.0",
+    "@agent-native/core": "0.201.0-nightly-20261005153421",
+    "@agent-native/toolkit": "0.201.0-nightly-20261005153421",
     "@tabler/icons-react": "catalog:",
     "@tanstack/react-query": "^5.101.4",
     "@types/node": "^26.1.1",

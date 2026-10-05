@@ -2,6 +2,19 @@ packages:
   - "packages/*"
   - "apps/*"
 
+# Netlify functions run linux-x64 glibc. Install those optional native
+# packages (sharp) even when this workspace is installed on a Mac.
+supportedArchitectures:
+  os:
+    - current
+    - linux
+  cpu:
+    - current
+    - x64
+  libc:
+    - current
+    - glibc
+
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@bacons/apple-targets"

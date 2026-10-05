@@ -1,0 +1,103 @@
+diff --git a/dist/deploy/build.js b/dist/deploy/build.js
+--- a/dist/deploy/build.js
++++ b/dist/deploy/build.js
+@@ -1,6 +1,9 @@
+ #!/usr/bin/env node
+ import { execFileSync } from "child_process";
+ import fs from "fs";
++import { Readable } from "stream";
++import { pipeline } from "stream/promises";
++import { createGunzip } from "zlib";
+ import { createRequire } from "module";
+ import path from "path";
+ import { fileURLToPath } from "url";
+@@ -2292,6 +2295,8 @@
+     "linux-x64-musl",
+     "linux-arm64-gnu",
+     "linux-arm64-musl",
++    // sharp publishes @img/sharp-linux-x64 (glibc), not a -gnu suffix.
++    "linux-x64",
+ ];
+ export function isServerlessNativePlatformPackage(packageName) {
+     return SERVERLESS_NATIVE_PACKAGE_SUFFIXES.some((suffix) => packageName.endsWith(suffix));
+@@ -2330,11 +2335,10 @@
+         return value;
+     return null;
+ }
+-export function shouldBundleFfmpegStaticForServerless(hostPlatform = process.platform, hostArch = process.arch, targetArch = serverlessFfmpegStaticTargetArchFromEnv()) {
+-    return (hostPlatform === SERVERLESS_FFMPEG_STATIC_PLATFORM &&
+-        targetArch !== null &&
+-        hostArch === targetArch &&
+-        SERVERLESS_FFMPEG_STATIC_ARCHES.has(targetArch));
++export function shouldBundleFfmpegStaticForServerless(_hostPlatform = process.platform, _hostArch = process.arch, targetArch = serverlessFfmpegStaticTargetArchFromEnv()) {
++    // Honor AGENT_NATIVE_SERVERLESS_FFMPEG_ARCH even when the build host is
++    // darwin. The copied package then gets a linux binary downloaded in.
++    return targetArch !== null && SERVERLESS_FFMPEG_STATIC_ARCHES.has(targetArch);
+ }
+ function nodeModulesAncestors(startDir) {
+     const dirs = [];
+@@ -3628,9 +3632,41 @@
+     }
+     console.log(`[deploy] Copied ${packages.length} resvg package(s) into the server bundle for OG image rendering.`);
+ }
+-function copyInstalledFfmpegStaticPackage(serverDir) {
++async function installServerlessFfmpegBinary(packageDir, targetArch) {
++    if (process.platform === SERVERLESS_FFMPEG_STATIC_PLATFORM && process.arch === targetArch)
++        return;
++    const manifest = readPackageManifest(packageDir);
++    const meta = manifest?.["ffmpeg-static"];
++    const release = process.env.FFMPEG_BINARY_RELEASE || meta?.["binary-release-tag"];
++    const downloadsUrl = process.env.FFMPEG_BINARIES_URL ||
++        "https://github.com/eugeneware/ffmpeg-static/releases/download";
++    if (!release) {
++        throw new Error("[deploy] ffmpeg-static is missing ffmpeg-static.binary-release-tag, so a linux binary cannot be downloaded.");
++    }
++    const cacheDir = path.join(cwd, "node_modules", ".cache", "ffmpeg-static");
++    const cached = path.join(cacheDir, `ffmpeg-linux-${targetArch}`);
++    if (!fs.existsSync(cached)) {
++        fs.mkdirSync(cacheDir, { recursive: true });
++        const url = `${downloadsUrl}/${release}/ffmpeg-linux-${targetArch}.gz`;
++        console.log(`[deploy] Downloading linux-${targetArch} ffmpeg-static binary`);
++        const response = await fetch(url);
++        if (!response.ok || !response.body) {
++            throw new Error(`[deploy] ffmpeg-static download failed (${response.status}) for ${url}`);
++        }
++        const partial = `${cached}.partial`;
++        await pipeline(Readable.fromWeb(response.body), createGunzip(), fs.createWriteStream(partial));
++        fs.renameSync(partial, cached);
++        fs.chmodSync(cached, 0o755);
++    }
++    const dest = path.join(packageDir, FFMPEG_STATIC_BINARY_NAMES[0]);
++    fs.copyFileSync(cached, dest);
++    fs.chmodSync(dest, 0o755);
++}
++async function copyInstalledFfmpegStaticPackage(serverDir) {
+     if (!serverDir || !fs.existsSync(serverDir))
+         return;
++    if (!manifestDeclaresDependency(readPackageManifest(cwd), FFMPEG_STATIC_PACKAGE_NAME))
++        return;
+     const nodeModulesRoots = nodeModulesAncestors(cwd);
+     if (!shouldBundleFfmpegStaticForServerless()) {
+         if (hasInstalledFfmpegStaticPackage(nodeModulesRoots)) {
+@@ -3647,7 +3683,11 @@
+         }
+         return;
+     }
+-    copyDir(src, path.join(serverDir, "node_modules", FFMPEG_STATIC_PACKAGE_NAME));
++    const destDir = path.join(serverDir, "node_modules", FFMPEG_STATIC_PACKAGE_NAME);
++    copyDir(src, destDir);
++    const targetArch = serverlessFfmpegStaticTargetArchFromEnv();
++    if (targetArch)
++        await installServerlessFfmpegBinary(destDir, targetArch);
+     console.log("[deploy] Copied ffmpeg-static into the server bundle for media transcription fallback.");
+ }
+ export function sanitizeServerlessFunctionPackageManifest(functionDir) {
+@@ -4129,7 +4169,7 @@
+         isAwsLambdaPreset(preset) ||
+         isAwsAmplifyPreset(preset)) {
+         copyInstalledResvgPackages(nitro.options.output.serverDir);
+-        copyInstalledFfmpegStaticPackage(nitro.options.output.serverDir);
++        await copyInstalledFfmpegStaticPackage(nitro.options.output.serverDir);
+         copyInstalledBrowserRuntimePackages(nitro.options.output.serverDir);
+         copyInstalledExternalSsrPackages(nitro.options.output.serverDir);
+         sanitizeServerlessFunctionPackageManifest(nitro.options.output.serverDir);

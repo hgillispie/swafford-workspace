@@ -17,8 +17,9 @@ Start with the app's registered design system and local UI adapters, then use
 the public feature's props, semantic components, controller, product slots,
 and callbacks. If those seams are not enough, use the eject CLI to transfer
 the smallest supported feature into the app and make that copy app-owned.
-Never edit `node_modules`, deep-import a private source file at runtime, or
-patch an `@agent-native/*` package.
+Never hand-edit `node_modules` or deep-import a private source file at
+runtime. An `@agent-native/*` patch is allowed only as a documented file in
+`patches/` registered with `pnpm.patchedDependencies`.
 
 Use this order:
 

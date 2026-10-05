@@ -18,9 +18,9 @@
     "doctor": "agent-native doctor"
   },
   "dependencies": {
-    "@agent-native/core": "0.200.0",
+    "@agent-native/core": "0.201.0-nightly-20261005153421",
     "@agent-native/creative-context": "workspace:*",
-    "@agent-native/toolkit": "^0.200.0",
+    "@agent-native/toolkit": "0.201.0-nightly-20261005153421",
     "@ai-sdk/openai": "^4.0.51",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
@@ -128,9 +128,9 @@
     "scaffold": {
       "template": "analytics",
       "frameworkSkills": "default",
-      "templateRef": "@agent-native/core@0.200.0",
+      "templateRef": "@agent-native/core@0.201.0-nightly-20261005153421",
       "templateSource": "github",
-      "coreVersion": "0.200.0",
+      "coreVersion": "0.201.0-nightly-20261005153421",
       "shape": "workspace"
     }
   }

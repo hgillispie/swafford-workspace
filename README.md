@@ -118,6 +118,27 @@ to validate those values without writing env files. Existing
 organization rows should still be repaired through the app's org settings UI or
 authenticated org routes whenever possible.
 
+## Production deploy
+
+Use the workspace binary so the installed `@agent-native/core` (including
+files in `patches/`) is the one that builds. `npx @agent-native/core@latest deploy`
+resolves a separate copy and can fail with peer dependency errors.
+
+```bash
+pnpm exec agent-native deploy --preset netlify
+```
+
+`netlify.toml` is set up for a Linux CI build that stops before publish:
+
+```bash
+pnpm exec agent-native deploy --preset netlify --build-only
+```
+
+Publish directory is `dist`. Functions directory is `.netlify/functions-internal`.
+Git-connected Netlify builds need a plan that can deploy this private repo.
+Until then, run the build where the env vars are exported and publish with
+`netlify deploy --prod --dir dist --functions .netlify/functions-internal`.
+
 ## Adding a new app
 
 ```bash

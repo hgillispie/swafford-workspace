@@ -1,0 +1,19 @@
+# Intended production build: Netlify's Linux builders install sharp and
+# ffmpeg-static for linux-x64, then this command writes dist/ and
+# .netlify/functions-internal without publishing. The site env already
+# supplies APP_URL, BETTER_AUTH_URL, DATABASE_URL, BETTER_AUTH_SECRET, and
+# A2A_SECRET. A2A_SECRET is required for background A2A processors.
+#
+# Git-connected builds are not enabled. This team is on the Free plan
+# (nf_team_dev), which cannot deploy private repositories, and
+# swafford-workspace is private. Link the repo only after the plan allows
+# private repos. Until then, build on a machine and publish with
+# `netlify deploy --prod --dir dist --functions .netlify/functions-internal`.
+[build]
+  command = "pnpm exec agent-native deploy --preset netlify --build-only"
+  publish = "dist"
+  functions = ".netlify/functions-internal"
+
+[build.environment]
+  NODE_VERSION = "22"
+  AGENT_NATIVE_SERVERLESS_FFMPEG_ARCH = "x64"

@@ -126,17 +126,17 @@ overrides:
 packageExtensionsChecksum: sha256-YybZdidAA15/x6R19t0W3iqnnd2bDOSW/FrgFtnFwiM=
 
 patchedDependencies:
-  '@agent-native/core@0.200.0':
-    hash: 8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b
-    path: patches/@agent-native__core@0.200.0.patch
+  '@agent-native/core@0.201.0-nightly-20261005153421':
+    hash: 55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074
+    path: patches/@agent-native__core@0.201.0-nightly-20261005153421.patch
 
 importers:
 
   .:
     dependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       drizzle-orm:
         specifier: ^0.45.3
         version: 0.45.3(@electric-sql/pglite@0.5.8)(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(kysely@0.29.6)(postgres@3.4.9)
@@ -160,14 +160,14 @@ importers:
   apps/analytics:
     dependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@agent-native/creative-context':
         specifier: workspace:*
         version: link:../../packages/creative-context
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(397f14a3648a0fb2737a6a39724ded87)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(2824f047028bb9baf724749080dde361)
       '@ai-sdk/openai':
         specifier: ^4.0.51
         version: 4.0.83(zod@4.6.5)
@@ -443,14 +443,14 @@ importers:
   apps/assets:
     dependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@agent-native/creative-context':
         specifier: workspace:*
         version: link:../../packages/creative-context
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(8e8426dc270c4be5d3ae50ef216646be)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(c1c3b59dccabb959320fda7e5748d333)
       '@electric-sql/pglite':
         specifier: ^0.5.8
         version: 0.5.8
@@ -618,11 +618,11 @@ importers:
   apps/brain:
     dependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(8e8426dc270c4be5d3ae50ef216646be)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(c1c3b59dccabb959320fda7e5748d333)
       '@electric-sql/pglite':
         specifier: ^0.5.8
         version: 0.5.8
@@ -757,14 +757,14 @@ importers:
   apps/chat:
     dependencies:
       '@agent-native/agentkit':
-        specifier: ^0.200.0
-        version: 0.200.0
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(54ad62a224ee00538c2a09e1c85fcfe1)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(54ad62a224ee00538c2a09e1c85fcfe1)
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(366a846337b60def19b77de0ed303873)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(0d9dbb0b1a3439149aa8ef77d0781547)
       '@ai-sdk/anthropic':
         specifier: ^3.0.71
         version: 3.0.127(zod@4.6.5)
@@ -1013,11 +1013,11 @@ importers:
   apps/clips:
     dependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(397f14a3648a0fb2737a6a39724ded87)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(2824f047028bb9baf724749080dde361)
       '@electric-sql/pglite':
         specifier: ^0.5.8
         version: 0.5.8
@@ -1254,14 +1254,14 @@ importers:
   apps/content:
     dependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@agent-native/creative-context':
         specifier: workspace:*
         version: link:../../packages/creative-context
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(8e8426dc270c4be5d3ae50ef216646be)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(c1c3b59dccabb959320fda7e5748d333)
       '@ai-sdk/openai':
         specifier: ^4.0.51
         version: 4.0.83(zod@4.6.5)
@@ -1531,14 +1531,14 @@ importers:
   apps/design:
     dependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(6cd978f1679b5197eb2d56dbce61f5cd)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(6cd978f1679b5197eb2d56dbce61f5cd)
       '@agent-native/creative-context':
         specifier: workspace:*
         version: link:../../packages/creative-context
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(7d96b294dd4e9bcd77107433b0768c50)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(676c42eceda3314715c10dedae933b49)
       '@electric-sql/pglite':
         specifier: ^0.5.8
         version: 0.5.8
@@ -1838,14 +1838,14 @@ importers:
   apps/dispatch:
     dependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(54ad62a224ee00538c2a09e1c85fcfe1)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(54ad62a224ee00538c2a09e1c85fcfe1)
       '@agent-native/dispatch':
-        specifier: latest
-        version: 0.40.11(36ebff5ff68fb211c68e6f735f4b90f1)
+        specifier: 0.40.12-nightly-20261005153421
+        version: 0.40.12-nightly-20261005153421(fb9cd2c1e3a236c187a153b4957ff5e0)
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(366a846337b60def19b77de0ed303873)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(0d9dbb0b1a3439149aa8ef77d0781547)
       '@ai-sdk/openai':
         specifier: ^3.0.53
         version: 3.0.124(zod@4.6.5)
@@ -1950,11 +1950,11 @@ importers:
   apps/plan:
     dependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(397f14a3648a0fb2737a6a39724ded87)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(2824f047028bb9baf724749080dde361)
       '@electric-sql/pglite':
         specifier: ^0.5.8
         version: 0.5.8
@@ -2236,14 +2236,14 @@ importers:
   apps/slides:
     dependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@agent-native/creative-context':
         specifier: workspace:*
         version: link:../../packages/creative-context
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(397f14a3648a0fb2737a6a39724ded87)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(2824f047028bb9baf724749080dde361)
       '@ai-sdk/openai':
         specifier: ^4.0.51
         version: 4.0.83(zod@4.6.5)
@@ -2598,11 +2598,11 @@ importers:
         version: 4.6.5
     devDependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@agent-native/toolkit':
-        specifier: ^0.200.0
-        version: 0.200.0(8e8426dc270c4be5d3ae50ef216646be)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(c1c3b59dccabb959320fda7e5748d333)
       '@tabler/icons-react':
         specifier: 'catalog:'
         version: 3.44.0(react@19.3.0)
@@ -2644,8 +2644,8 @@ importers:
   packages/embedding:
     devDependencies:
       '@agent-native/core':
-        specifier: 0.200.0
-        version: 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+        specifier: 0.201.0-nightly-20261005153421
+        version: 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@types/react':
         specifier: ^19.2.15
         version: 19.3.0
@@ -2670,15 +2670,15 @@ packages:
   '@ag-ui/core@0.0.59':
     resolution: {integrity: sha512-hDgy4ipTqXieT8YG8Mr917Y+FD/f11VK1GefZ5CwTDCuNqS/oTwjJ5l/DZkicThgS8hQW/Y7wPylPBMBJ8BkUg==}
 
-  '@agent-native/agentkit@0.200.0':
-    resolution: {integrity: sha512-ul7woEF5vOkdhQvalEehCq3T6PDC0Qb4QtEh5mTgOGE4sSSvySHogQPMoWtjsAkJ4dI3ZoNUOUjUhUs5ZcZXbQ==}
+  '@agent-native/agentkit@0.201.0-nightly-20261005153421':
+    resolution: {integrity: sha512-TlhvCj46X+I386fu2Vg4l9slij0DP48+FSbaOr4gveSCyn5o7FEra7UuAK57jFckR4Zgmhz/bRcQgOQPOSA3xQ==}
 
-  '@agent-native/core@0.200.0':
-    resolution: {integrity: sha512-x5rbi1EF73RTOtCdLOmFRZ1Q6zkTLKi4EMjknOijkTnTtL/uAOMSUShB0gLWqJb8v5F6yNgQ43LP/aPAF2q0cQ==}
+  '@agent-native/core@0.201.0-nightly-20261005153421':
+    resolution: {integrity: sha512-qXsDL1tkGDjAHGCdzVDy6f678Jsb9ko7HDn+/cFg/HMwTdgDSP9rqEN+Z0j2stn9tS+ga9hLIn0zcLhbxtpP7Q==}
     engines: {node: '>=22.22.0'}
     hasBin: true
     peerDependencies:
-      '@agent-native/core-corpus': '>=0.196.0'
+      '@agent-native/core-corpus': 0.201.0-nightly-20261005153421
       '@ai-sdk/anthropic': '>=3'
       '@ai-sdk/cohere': '>=3'
       '@ai-sdk/google': '>=3'
@@ -2805,16 +2805,16 @@ packages:
       xlsx:
         optional: true
 
-  '@agent-native/dispatch@0.40.11':
-    resolution: {integrity: sha512-2eJjog9NH9ssaVfOIfE9vgwceh8pbm1ivBI/sXqKtQzPZCXCZu+gyVLZj0YtDoTVNAuR2eKLMGpceLY9DQPmPA==}
+  '@agent-native/dispatch@0.40.12-nightly-20261005153421':
+    resolution: {integrity: sha512-JOTfIy2qGuOEdBhUVTk1YSZDF6+TgQ1S+OMpvvWRvPPYVNbuU1f9HgBXzZTYGlE8uGTKU6ySU++ibGM8CAEHKw==}
     peerDependencies:
-      '@agent-native/core': '>=0.198.6'
+      '@agent-native/core': 0.201.0-nightly-20261005153421
       react: '>=19.2.7'
       react-dom: '>=19.2.7'
       react-router: '>=8'
 
-  '@agent-native/recap-cli@0.5.60':
-    resolution: {integrity: sha512-4LPREQAPRtDHs+3/HeDkkiLBsaGxaEWsQx+ixQilMmEALovoGU1Vml3AGJAT29rZ+CCQ5yUuBvq6WOZbHYBfbw==}
+  '@agent-native/recap-cli@0.5.61-nightly-20261005153421':
+    resolution: {integrity: sha512-ncEUS5K2Ym6T+rHgEfXzJiMJWWpekiTPZW3loO00a46rSaxZ0+6HdIW9lcmNYFemWm+edIbLucKkwtqlEUlYQg==}
     engines: {node: '>=22.22.0'}
     hasBin: true
     peerDependencies:
@@ -2823,10 +2823,10 @@ packages:
       playwright:
         optional: true
 
-  '@agent-native/toolkit@0.200.0':
-    resolution: {integrity: sha512-zPcVvUxXx8IuqP35s/zqs85iLRM1jcWzbMHuf7ztra1XS7jrisPwsBWB/0pfTwfIwWF8LNkP5lu+4KjRf7W8Wg==}
+  '@agent-native/toolkit@0.201.0-nightly-20261005153421':
+    resolution: {integrity: sha512-aEcmeSy/SpoXr8Ek50fTUel2wircHuJkIkc49SqeZTTjrZ9oerZ5wdPfdQRxri0hLzJotQ+gP6rWHgDuXyxTiw==}
     peerDependencies:
-      '@agent-native/core': '>=0.196.0'
+      '@agent-native/core': 0.201.0-nightly-20261005153421
       '@excalidraw/excalidraw': '>=0.18'
       '@excalidraw/mermaid-to-excalidraw': '>=2'
       '@tanstack/react-query': ^5.101.2
@@ -10392,14 +10392,14 @@ snapshots:
     dependencies:
       zod: 4.6.5
 
-  '@agent-native/agentkit@0.200.0':
+  '@agent-native/agentkit@0.201.0-nightly-20261005153421':
     dependencies:
       '@ag-ui/core': 0.0.59
 
-  '@agent-native/core@0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(54ad62a224ee00538c2a09e1c85fcfe1)':
+  '@agent-native/core@0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(54ad62a224ee00538c2a09e1c85fcfe1)':
     dependencies:
-      '@agent-native/agentkit': 0.200.0
-      '@agent-native/recap-cli': 0.5.60(playwright@1.63.0)
+      '@agent-native/agentkit': 0.201.0-nightly-20261005153421
+      '@agent-native/recap-cli': 0.5.61-nightly-20261005153421(playwright@1.63.0)
       '@anthropic-ai/sdk': 0.90.0(zod@4.6.5)
       '@clack/prompts': 1.8.1
       '@mcp-b/webmcp-polyfill': 5.1.0
@@ -10541,10 +10541,10 @@ snapshots:
       - xml2js
       - zephyr-agent
 
-  '@agent-native/core@0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(6cd978f1679b5197eb2d56dbce61f5cd)':
+  '@agent-native/core@0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(6cd978f1679b5197eb2d56dbce61f5cd)':
     dependencies:
-      '@agent-native/agentkit': 0.200.0
-      '@agent-native/recap-cli': 0.5.60(playwright@1.63.0)
+      '@agent-native/agentkit': 0.201.0-nightly-20261005153421
+      '@agent-native/recap-cli': 0.5.61-nightly-20261005153421(playwright@1.63.0)
       '@anthropic-ai/sdk': 0.90.0(zod@4.6.5)
       '@clack/prompts': 1.8.1
       '@mcp-b/webmcp-polyfill': 5.1.0
@@ -10686,10 +10686,10 @@ snapshots:
       - xml2js
       - zephyr-agent
 
-  '@agent-native/core@0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)':
+  '@agent-native/core@0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)':
     dependencies:
-      '@agent-native/agentkit': 0.200.0
-      '@agent-native/recap-cli': 0.5.60(playwright@1.63.0)
+      '@agent-native/agentkit': 0.201.0-nightly-20261005153421
+      '@agent-native/recap-cli': 0.5.61-nightly-20261005153421(playwright@1.63.0)
       '@anthropic-ai/sdk': 0.90.0(zod@4.6.5)
       '@clack/prompts': 1.8.1
       '@mcp-b/webmcp-polyfill': 5.1.0
@@ -10832,10 +10832,10 @@ snapshots:
       - xml2js
       - zephyr-agent
 
-  '@agent-native/dispatch@0.40.11(36ebff5ff68fb211c68e6f735f4b90f1)':
+  '@agent-native/dispatch@0.40.12-nightly-20261005153421(fb9cd2c1e3a236c187a153b4957ff5e0)':
     dependencies:
-      '@agent-native/core': 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(54ad62a224ee00538c2a09e1c85fcfe1)
-      '@agent-native/toolkit': 0.200.0(366a846337b60def19b77de0ed303873)
+      '@agent-native/core': 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(54ad62a224ee00538c2a09e1c85fcfe1)
+      '@agent-native/toolkit': 0.201.0-nightly-20261005153421(0d9dbb0b1a3439149aa8ef77d0781547)
       '@radix-ui/react-accordion': 1.2.20(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@radix-ui/react-alert-dialog': 1.1.23(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@radix-ui/react-aspect-ratio': 1.1.15(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -10950,13 +10950,13 @@ snapshots:
       - supports-color
       - use-sync-external-store
 
-  '@agent-native/recap-cli@0.5.60(playwright@1.63.0)':
+  '@agent-native/recap-cli@0.5.61-nightly-20261005153421(playwright@1.63.0)':
     optionalDependencies:
       playwright: 1.63.0
 
-  '@agent-native/toolkit@0.200.0(366a846337b60def19b77de0ed303873)':
+  '@agent-native/toolkit@0.201.0-nightly-20261005153421(0d9dbb0b1a3439149aa8ef77d0781547)':
     dependencies:
-      '@agent-native/agentkit': 0.200.0
+      '@agent-native/agentkit': 0.201.0-nightly-20261005153421
       '@assistant-ui/react': 0.12.28(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.1.21)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
       '@assistant-ui/store': 0.2.13(@assistant-ui/tap@0.5.16(@types/react@19.3.0)(react@19.3.0))(@types/react@19.3.0)(react@19.3.0)
       '@assistant-ui/tap': 0.5.16(@types/react@19.3.0)(react@19.3.0)
@@ -11047,7 +11047,7 @@ snapshots:
       yjs: 13.6.33
       zod: 4.6.5
     optionalDependencies:
-      '@agent-native/core': 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(54ad62a224ee00538c2a09e1c85fcfe1)
+      '@agent-native/core': 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(54ad62a224ee00538c2a09e1c85fcfe1)
       '@excalidraw/excalidraw': 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.1.21)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@excalidraw/mermaid-to-excalidraw': 2.2.2
       '@xterm/addon-fit': 0.11.0
@@ -11085,9 +11085,9 @@ snapshots:
       - supports-color
       - use-sync-external-store
 
-  '@agent-native/toolkit@0.200.0(397f14a3648a0fb2737a6a39724ded87)':
+  '@agent-native/toolkit@0.201.0-nightly-20261005153421(2824f047028bb9baf724749080dde361)':
     dependencies:
-      '@agent-native/agentkit': 0.200.0
+      '@agent-native/agentkit': 0.201.0-nightly-20261005153421
       '@assistant-ui/react': 0.12.28(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.1.21)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
       '@assistant-ui/store': 0.2.13(@assistant-ui/tap@0.5.16(@types/react@19.3.0)(react@19.3.0))(@types/react@19.3.0)(react@19.3.0)
       '@assistant-ui/tap': 0.5.16(@types/react@19.3.0)(react@19.3.0)
@@ -11178,7 +11178,7 @@ snapshots:
       yjs: 13.6.33
       zod: 4.6.5
     optionalDependencies:
-      '@agent-native/core': 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+      '@agent-native/core': 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@excalidraw/excalidraw': 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.1.21)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@excalidraw/mermaid-to-excalidraw': 2.2.2
       '@xterm/addon-fit': 0.11.0
@@ -11216,9 +11216,9 @@ snapshots:
       - supports-color
       - use-sync-external-store
 
-  '@agent-native/toolkit@0.200.0(7d96b294dd4e9bcd77107433b0768c50)':
+  '@agent-native/toolkit@0.201.0-nightly-20261005153421(676c42eceda3314715c10dedae933b49)':
     dependencies:
-      '@agent-native/agentkit': 0.200.0
+      '@agent-native/agentkit': 0.201.0-nightly-20261005153421
       '@assistant-ui/react': 0.12.28(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.1.21)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
       '@assistant-ui/store': 0.2.13(@assistant-ui/tap@0.5.16(@types/react@19.3.0)(react@19.3.0))(@types/react@19.3.0)(react@19.3.0)
       '@assistant-ui/tap': 0.5.16(@types/react@19.3.0)(react@19.3.0)
@@ -11309,7 +11309,7 @@ snapshots:
       yjs: 13.6.33
       zod: 4.6.5
     optionalDependencies:
-      '@agent-native/core': 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(6cd978f1679b5197eb2d56dbce61f5cd)
+      '@agent-native/core': 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(6cd978f1679b5197eb2d56dbce61f5cd)
       '@excalidraw/excalidraw': 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.1.21)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@excalidraw/mermaid-to-excalidraw': 2.2.2
       '@xterm/addon-fit': 0.11.0
@@ -11347,9 +11347,9 @@ snapshots:
       - supports-color
       - use-sync-external-store
 
-  '@agent-native/toolkit@0.200.0(8e8426dc270c4be5d3ae50ef216646be)':
+  '@agent-native/toolkit@0.201.0-nightly-20261005153421(c1c3b59dccabb959320fda7e5748d333)':
     dependencies:
-      '@agent-native/agentkit': 0.200.0
+      '@agent-native/agentkit': 0.201.0-nightly-20261005153421
       '@assistant-ui/react': 0.12.28(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.1.21)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
       '@assistant-ui/store': 0.2.13(@assistant-ui/tap@0.5.16(@types/react@19.3.0)(react@19.3.0))(@types/react@19.3.0)(react@19.3.0)
       '@assistant-ui/tap': 0.5.16(@types/react@19.3.0)(react@19.3.0)
@@ -11440,7 +11440,7 @@ snapshots:
       yjs: 13.6.33
       zod: 4.6.5
     optionalDependencies:
-      '@agent-native/core': 0.200.0(patch_hash=8f5c332270450adb2f71dd9c8ac47179e51c647651b8ab7417df9ff0e3bbd82b)(a2cca036438b9160be257ff4912b6e3a)
+      '@agent-native/core': 0.201.0-nightly-20261005153421(patch_hash=55563cbea94c2e3948d1a2181bd5f86bd0387ea3a9e23b214ea26db5d2adc074)(a2cca036438b9160be257ff4912b6e3a)
       '@excalidraw/excalidraw': 0.18.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.1.21)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@excalidraw/mermaid-to-excalidraw': 2.2.2
       '@xterm/addon-fit': 0.11.0

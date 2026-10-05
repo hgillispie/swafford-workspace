@@ -17,7 +17,7 @@
     "postinstall": "pnpm --filter ./packages/creative-context build && pnpm --filter ./packages/embedding build"
   },
   "dependencies": {
-    "@agent-native/core": "0.200.0",
+    "@agent-native/core": "0.201.0-nightly-20261005153421",
     "drizzle-orm": "^0.45.3",
     "postgres": "^3.4.9"
   },
@@ -30,7 +30,7 @@
   "packageManager": "pnpm@10.29.1",
   "pnpm": {
     "patchedDependencies": {
-      "@agent-native/core@0.200.0": "patches/@agent-native__core@0.200.0.patch"
+      "@agent-native/core@0.201.0-nightly-20261005153421": "patches/@agent-native__core@0.201.0-nightly-20261005153421.patch"
     }
   },
   "agent-native": {
