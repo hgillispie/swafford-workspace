@@ -8,13 +8,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     fonts-liberation \
     python3 \
-    python3-opencv \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Local ASR and optional YouTube ingest. Builder, Deepgram, and AssemblyAI
 # need no extra packages, but the image still includes both tools.
-RUN pip3 install --break-system-packages --no-cache-dir faster-whisper==1.1.1 yt-dlp
+# Pin PyAV. faster-whisper 1.1.1 passes metadata_errors, which PyAV 19 removed.
+RUN pip3 install --break-system-packages --no-cache-dir \
+    faster-whisper==1.1.1 yt-dlp "av==14.2.0" "opencv-python-headless==4.10.0.84"
 
 WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@10.29.1 --activate

@@ -12,7 +12,7 @@ def main() -> None:
     cascade_path = (
         sys.argv[2]
         if len(sys.argv) > 2
-        else "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
+        else cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
     )
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
@@ -36,7 +36,7 @@ def main() -> None:
                 frame,
                 (target_w, max(1, int(height * target_w / width))),
             )
-            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+            gray = cv2.equalizeHist(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY))
             scale = width / small.shape[1]
             cx = width / 2
             cy = height / 2
