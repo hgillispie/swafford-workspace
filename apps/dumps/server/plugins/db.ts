@@ -68,6 +68,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS dump_shares_token_idx ON dump_shares (token);
 CREATE INDEX IF NOT EXISTS dump_shares_file_idx ON dump_shares (file_id);
 CREATE INDEX IF NOT EXISTS dump_shares_org_idx ON dump_shares (org_id);`,
     },
+    {
+      version: 2,
+      name: "dumps-file-part-size",
+      sql: `ALTER TABLE dump_files ADD COLUMN IF NOT EXISTS part_size_bytes BIGINT;`,
+    },
   ],
   { table: "dumps_migrations" },
 );

@@ -73,6 +73,7 @@ export function toFile(row: typeof dumpFiles.$inferSelect) {
     tags: parseTags(row.tags),
     b2Key: row.b2Key,
     uploadId: row.uploadId,
+    partSizeBytes: row.partSizeBytes,
     status: row.status,
     createdAt: row.createdAt,
   };

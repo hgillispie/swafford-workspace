@@ -49,6 +49,8 @@ export default defineAction({
       const signed = await presignGet({
         key: file.b2Key,
         filename: file.filename,
+        contentType: file.contentType,
+        disposition: "inline",
       });
       return {
         id: file.id,

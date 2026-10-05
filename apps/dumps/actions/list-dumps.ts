@@ -118,6 +118,8 @@ export default defineAction({
 
     return {
       missingEnv: missingB2Env(),
+      orgId,
+      inboxPrefix: `org/${orgId}/inbox/`,
       folder: folder ? toFolder(folder) : null,
       breadcrumbs: await breadcrumbs(folder?.id ?? null, orgId),
       folders: folders.map(toFolder),

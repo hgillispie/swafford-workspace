@@ -87,6 +87,7 @@ export default defineAction({
         tags: tags?.length ? JSON.stringify(tags) : null,
         b2Key: key,
         uploadId,
+        partSizeBytes: partSize,
         status: "uploading",
         ownerEmail: email,
         orgId,

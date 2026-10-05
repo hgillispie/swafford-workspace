@@ -2,7 +2,7 @@ import { defineAction, fail } from "@agent-native/core/action";
 import { and, eq } from "@agent-native/core/db/schema";
 import { z } from "zod";
 
-import { completeUpload, planParts } from "../server/lib/b2.js";
+import { completeUpload, partCountFor, planParts } from "../server/lib/b2.js";
 import {
   dumpFiles,
   failB2,
@@ -40,7 +40,8 @@ export default defineAction({
         errorCode: "upload_not_open",
       });
     }
-    const { partCount } = planParts(file.sizeBytes);
+    const partSize = file.partSizeBytes ?? planParts(file.sizeBytes).partSize;
+    const partCount = partCountFor(file.sizeBytes, partSize);
     if (parts.length !== partCount) {
       fail(`Expected ${partCount} parts and received ${parts.length}.`, {
         statusCode: 400,

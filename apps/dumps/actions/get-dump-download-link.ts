@@ -6,13 +6,17 @@ import { failB2, loadFile, requireActor } from "../server/lib/dumps.js";
 
 export default defineAction({
   description:
-    "Return a 15-minute presigned download URL for a ready dump file. Use it for download and for image, video, audio, or PDF preview.",
+    "Return a 15-minute presigned GET URL for a ready dump file. Use inline for in-browser MP4 playback and attachment for a download.",
   schema: z.object({
     id: z.string().describe("Dump file id."),
+    disposition: z
+      .enum(["inline", "attachment"])
+      .optional()
+      .describe("inline plays in the browser. attachment downloads the file."),
   }),
   http: { method: "GET" },
   readOnly: true,
-  run: async ({ id }) => {
+  run: async ({ id, disposition }) => {
     const { orgId } = requireActor();
     const file = await loadFile(id, orgId);
     if (file.status !== "ready") {
@@ -25,6 +29,8 @@ export default defineAction({
       const signed = await presignGet({
         key: file.b2Key,
         filename: file.filename,
+        contentType: file.contentType,
+        disposition: disposition === "attachment" ? "attachment" : "inline",
       });
       return {
         id,

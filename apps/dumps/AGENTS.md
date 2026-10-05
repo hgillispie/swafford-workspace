@@ -18,8 +18,11 @@ The public root opens the shared sign-in page. Signed-in members land on
 | `delete-dump-folder`     | Delete an empty folder                                       |
 | `start-dump-upload`      | Open a multipart upload and record metadata                  |
 | `sign-dump-parts`        | Sign a batch of part PUT URLs                                |
+| `list-dump-parts`        | List stored parts so a browser can resume                    |
 | `complete-dump-upload`   | Finish the multipart upload                                  |
 | `abort-dump-upload`      | Cancel an open upload and delete its row                     |
+| `configure-dump-cors`    | PutBucketCors for the site, localhost, and ETag              |
+| `index-dump-bucket`      | Sync and index objects already in the bucket                 |
 | `update-dump`            | Rename, retag, note, or move a file                          |
 | `delete-dump`            | Delete a ready file and its object                           |
 | `get-dump-download-link` | 15-minute presigned GET for download or preview              |
@@ -28,24 +31,34 @@ The public root opens the shared sign-in page. Signed-in members land on
 
 Upload flow: `start-dump-upload`, then `sign-dump-parts` in batches, PUT each
 part from the browser, then `complete-dump-upload` with the ETags. Part size
-is 8 MiB unless the file needs larger parts to stay under 10,000 parts.
+is 8 MiB and grows toward 32 MiB for multi-gigabyte files, staying under
+10,000 parts. New objects use SSE-B2 (`AES256`). Do not enable Object Lock.
+
+Resume flow: `list-dump-parts` returns parts already in the bucket. Sign and
+PUT only the missing part numbers, then complete.
+
+Shop machines copy into `org/{orgId}/inbox/` with rclone. See `README.md` for
+the command. Run `index-dump-bucket` afterward. Pass `cursor` when the result
+includes `nextToken`. The prefix must stay under `org/{orgId}/`.
 
 ## Backblaze
 
 Server-only site environment variables:
 
-- `B2_S3_ENDPOINT` — S3 endpoint, such as `https://s3.us-west-004.backblazeb2.com`
-- `B2_REGION` — matching region, such as `us-west-004`
-- `B2_BUCKET`
+- `B2_S3_ENDPOINT` — `https://s3.us-east-005.backblazeb2.com`
+- `B2_REGION` — `us-east-005`
+- `B2_BUCKET` — `swafford-video-dumps`
 - `B2_KEY_ID`
 - `B2_APPLICATION_KEY`
 
-Missing names are returned by `list-dumps` and shown in the library. Do not
-ask anyone to paste the values into chat.
+The endpoint, region, and bucket name are public for this workspace. The key
+id and application key are not. Missing key names are returned by `list-dumps`
+and shown in the library. Do not ask anyone to paste values into chat. Local
+runs also read a workspace root `.env` when a name is unset.
 
-The bucket CORS rule must allow the site origin, methods PUT, GET, and HEAD,
-header `*`, and expose `ETag`. The first upload tries to set that rule when
-the key allows it.
+`configure-dump-cors` allows `https://swafford-workspace.netlify.app` and
+localhost dev origins, methods GET, PUT, HEAD, and POST, header `*`, and
+exposes `ETag`.
 
 Object keys look like `org/{orgId}/files/{id}/{filename}`.
 

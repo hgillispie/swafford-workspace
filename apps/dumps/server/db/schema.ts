@@ -36,6 +36,7 @@ export const dumpFiles = table(
     tags: text("tags"),
     b2Key: text("b2_key").notNull(),
     uploadId: text("upload_id"),
+    partSizeBytes: bigint("part_size_bytes", { mode: "number" }),
     status: text("status", { enum: ["uploading", "ready", "failed"] })
       .notNull()
       .default("uploading"),

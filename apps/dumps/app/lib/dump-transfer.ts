@@ -139,6 +139,62 @@ async function putPart(
   throw new Error(lastError);
 }
 
+type OpenUpload = {
+  id: string;
+  partSize: number;
+  partCount: number;
+  parts: Array<{ partNumber: number; etag: string }>;
+};
+
+async function sendParts(input: {
+  id: string;
+  file: File;
+  partSize: number;
+  partCount: number;
+  done: Map<number, string>;
+  signal: AbortSignal;
+  onProgress: (loaded: number) => void;
+}) {
+  const loaded = new Map<number, number>();
+  for (const [partNumber] of input.done) {
+    const offset = (partNumber - 1) * input.partSize;
+    loaded.set(
+      partNumber,
+      Math.min(input.partSize, Math.max(0, input.file.size - offset)),
+    );
+  }
+  const report = () => {
+    let total = 0;
+    for (const value of loaded.values()) total += value;
+    input.onProgress(total);
+  };
+  report();
+  const missing: number[] = [];
+  for (let partNumber = 1; partNumber <= input.partCount; partNumber += 1) {
+    if (!input.done.has(partNumber)) missing.push(partNumber);
+  }
+  for (let start = 0; start < missing.length; start += 20) {
+    const partNumbers = missing.slice(start, start + 20);
+    const signed = (await callAction("sign-dump-parts", {
+      id: input.id,
+      partNumbers,
+    })) as SignedParts;
+    await mapPool(signed.parts, 4, async (part) => {
+      const offset = (part.partNumber - 1) * input.partSize;
+      const blob = input.file.slice(offset, offset + input.partSize);
+      const etag = await putPart(part.url, blob, input.signal);
+      input.done.set(part.partNumber, etag);
+      loaded.set(part.partNumber, blob.size);
+      report();
+    });
+  }
+  const parts = [...input.done.entries()].map(([partNumber, etag]) => ({
+    partNumber,
+    etag,
+  }));
+  await callAction("complete-dump-upload", { id: input.id, parts });
+}
+
 export async function uploadDumpFile(input: {
   file: File;
   folderId: string | null;
@@ -152,54 +208,44 @@ export async function uploadDumpFile(input: {
     folderId: input.folderId,
   });
   const upload = started as StartedUpload;
-  const loaded = new Map<number, number>();
-  const report = () => {
-    let total = 0;
-    for (const value of loaded.values()) total += value;
-    input.onProgress(total);
+  await sendParts({
+    id: upload.id,
+    file: input.file,
+    partSize: upload.partSize,
+    partCount: upload.partCount,
+    done: new Map(),
+    signal: input.signal,
+    onProgress: input.onProgress,
+  });
+  return {
+    id: upload.id,
+    corsMessage: upload.cors?.ok ? undefined : upload.cors?.message,
   };
-  try {
-    const completed: Array<{ partNumber: number; etag: string }> = [];
-    for (let start = 1; start <= upload.partCount; start += 20) {
-      const partNumbers: number[] = [];
-      for (
-        let partNumber = start;
-        partNumber < start + 20 && partNumber <= upload.partCount;
-        partNumber += 1
-      ) {
-        partNumbers.push(partNumber);
-      }
-      const signed = (await callAction("sign-dump-parts", {
-        id: upload.id,
-        partNumbers,
-      })) as SignedParts;
-      await mapPool(signed.parts, 4, async (part) => {
-        const offset = (part.partNumber - 1) * upload.partSize;
-        const blob = input.file.slice(offset, offset + upload.partSize);
-        const etag = await putPart(part.url, blob, input.signal);
-        loaded.set(part.partNumber, blob.size);
-        report();
-        completed.push({ partNumber: part.partNumber, etag });
-      });
-    }
-    await callAction("complete-dump-upload", {
-      id: upload.id,
-      parts: completed,
-    });
-    return {
-      id: upload.id,
-      corsMessage: upload.cors?.ok ? undefined : upload.cors?.message,
-    };
-  } catch (error) {
-    if (upload.id) {
-      try {
-        await callAction("abort-dump-upload", { id: upload.id });
-      } catch {
-        // The row can still be aborted from the library.
-      }
-    }
-    throw error;
+}
+
+export async function resumeDumpFile(input: {
+  id: string;
+  file: File;
+  signal: AbortSignal;
+  onProgress: (loaded: number) => void;
+}): Promise<void> {
+  const open = (await callAction(
+    "list-dump-parts",
+    { id: input.id },
+    { method: "GET" },
+  )) as OpenUpload & { sizeBytes: number; filename: string };
+  if (input.file.size !== open.sizeBytes) {
+    throw new Error("Choose the same file. The size does not match this upload.");
   }
+  await sendParts({
+    id: input.id,
+    file: input.file,
+    partSize: open.partSize,
+    partCount: open.partCount,
+    done: new Map(open.parts.map((part) => [part.partNumber, part.etag])),
+    signal: input.signal,
+    onProgress: input.onProgress,
+  });
 }
 
 export async function ensureDumpFolders(

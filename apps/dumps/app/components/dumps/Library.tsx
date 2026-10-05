@@ -15,6 +15,7 @@ import {
   ensureDumpFolders,
   filesFromDrop,
   filesFromInput,
+  resumeDumpFile,
   uploadDumpFile,
   type DumpTransferFile,
 } from "@/lib/dump-transfer";
@@ -41,6 +42,8 @@ type DumpFile = {
 
 type LibraryData = {
   missingEnv: string[];
+  orgId?: string;
+  inboxPrefix?: string;
   folder: DumpFolder | null;
   breadcrumbs: Array<{ id: string; name: string }>;
   folders: DumpFolder[];
@@ -105,6 +108,8 @@ export function DumpLibrary() {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
+  const resumeInput = useRef<HTMLInputElement>(null);
+  const resumeId = useRef<string | null>(null);
   const previewDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -167,43 +172,90 @@ export function DumpLibrary() {
     if (items.length === 0) return;
     const cache = new Map<string, string | null>();
     const root = folderId ?? null;
+    const planned: Array<DumpTransferFile & { key: string; folder: string | null }> =
+      [];
     for (const item of items) {
+      const destination = await ensureDumpFolders(item.relativePath, root, cache);
       const key = `${item.relativePath}:${item.file.size}:${item.file.lastModified}`;
+      planned.push({ ...item, key, folder: destination });
       setTransfers((current) => [
         ...current,
         { key, filename: item.file.name, loaded: 0, total: item.file.size },
       ]);
-      const controller = new AbortController();
-      try {
-        const destination = await ensureDumpFolders(
-          item.relativePath,
-          root,
-          cache,
-        );
-        await uploadDumpFile({
-          file: item.file,
-          folderId: destination,
-          signal: controller.signal,
-          onProgress: (loaded) => {
-            setTransfers((current) =>
-              current.map((transfer) =>
-                transfer.key === key ? { ...transfer, loaded } : transfer,
-              ),
-            );
-          },
-        });
-        setTransfers((current) =>
-          current.filter((transfer) => transfer.key !== key),
-        );
-      } catch (error) {
-        const message = actionErrorMessage(error) ?? "Upload failed.";
-        setTransfers((current) =>
-          current.map((transfer) =>
-            transfer.key === key ? { ...transfer, error: message } : transfer,
-          ),
-        );
-        if (/ETag|CORS/i.test(message)) setNotice(message);
+    }
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < planned.length) {
+        const item = planned[cursor];
+        cursor += 1;
+        if (!item) return;
+        const controller = new AbortController();
+        try {
+          await uploadDumpFile({
+            file: item.file,
+            folderId: item.folder,
+            signal: controller.signal,
+            onProgress: (loaded) => {
+              setTransfers((current) =>
+                current.map((transfer) =>
+                  transfer.key === item.key ? { ...transfer, loaded } : transfer,
+                ),
+              );
+            },
+          });
+          setTransfers((current) =>
+            current.filter((transfer) => transfer.key !== item.key),
+          );
+        } catch (error) {
+          const message = actionErrorMessage(error) ?? "Upload failed.";
+          setTransfers((current) =>
+            current.map((transfer) =>
+              transfer.key === item.key ? { ...transfer, error: message } : transfer,
+            ),
+          );
+          setNotice(
+            `${item.file.name} stopped. Choose the same file from its row to resume.`,
+          );
+        }
       }
+    };
+    await Promise.all([worker(), worker()]);
+    void library.refetch();
+  }
+
+  async function resumeSelected(list: FileList | null) {
+    const file = list?.[0];
+    const id = resumeId.current;
+    resumeId.current = null;
+    if (!file || !id) return;
+    const key = `resume:${id}:${file.size}`;
+    setTransfers((current) => [
+      ...current,
+      { key, filename: file.name, loaded: 0, total: file.size },
+    ]);
+    try {
+      await resumeDumpFile({
+        id,
+        file,
+        signal: new AbortController().signal,
+        onProgress: (loaded) => {
+          setTransfers((current) =>
+            current.map((transfer) =>
+              transfer.key === key ? { ...transfer, loaded } : transfer,
+            ),
+          );
+        },
+      });
+      setTransfers((current) => current.filter((transfer) => transfer.key !== key));
+      void library.refetch();
+    } catch (error) {
+      const message = actionErrorMessage(error) ?? "Resume failed.";
+      setTransfers((current) =>
+        current.map((transfer) =>
+          transfer.key === key ? { ...transfer, error: message } : transfer,
+        ),
+      );
+      setNotice(message);
     }
   }
 
@@ -218,7 +270,10 @@ export function DumpLibrary() {
     try {
       const result = (await callAction(
         "get-dump-download-link",
-        { id: file.id },
+        {
+          id: file.id,
+          disposition: previewFirst ? "inline" : "attachment",
+        },
         { method: "GET" },
       )) as {
         url: string;
@@ -254,8 +309,15 @@ export function DumpLibrary() {
         </p>
         <h1 className="text-2xl font-semibold tracking-tight">Dumps</h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Files upload straight to Backblaze. This page keeps the ledger.
+          Drop MP4s straight into the private bucket, including multi-gigabyte
+          files and whole folders. Leave and come back, then choose the same
+          file to resume.
         </p>
+        {data?.inboxPrefix ? (
+          <p className="font-mono text-xs text-muted-foreground">
+            Shop copies: {data.inboxPrefix}
+          </p>
+        ) : null}
       </header>
 
       {missingEnv.length > 0 ? (
@@ -319,7 +381,7 @@ export function DumpLibrary() {
         }`}
       >
         <IconUpload className="mx-auto size-5 text-primary" />
-        <p className="mt-2 text-sm font-medium">Drop files or a folder</p>
+        <p className="mt-2 text-sm font-medium">Drop MP4s or a folder</p>
         <div className="mt-3 flex items-center justify-center gap-2">
           <Button
             type="button"
@@ -338,9 +400,19 @@ export function DumpLibrary() {
           </Button>
         </div>
         <input
+          ref={resumeInput}
+          type="file"
+          className="hidden"
+          onChange={(event) => {
+            void resumeSelected(event.target.files);
+            event.target.value = "";
+          }}
+        />
+        <input
           ref={fileInput}
           type="file"
           multiple
+          accept="video/mp4,video/*,.mp4,.mov,.m4v"
           className="hidden"
           onChange={(event) => {
             void uploadBatch(filesFromInput(event.target.files));
@@ -585,14 +657,28 @@ export function DumpLibrary() {
                       : ""}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {file.status === "uploading" ? (
-                      <button
-                        type="button"
-                        className="text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => abortUpload.mutate({ id: file.id })}
-                      >
-                        Abort
-                      </button>
+                    {file.status === "uploading" || file.status === "failed" ? (
+                      <span className="inline-flex gap-3">
+                        <button
+                          type="button"
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => {
+                            resumeId.current = file.id;
+                            resumeInput.current?.click();
+                          }}
+                        >
+                          Resume
+                        </button>
+                        {file.status === "uploading" ? (
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => abortUpload.mutate({ id: file.id })}
+                          >
+                            Abort
+                          </button>
+                        ) : null}
+                      </span>
                     ) : (
                       <button
                         type="button"
@@ -777,6 +863,8 @@ export function DumpLibrary() {
               <video
                 src={preview.url}
                 controls
+                playsInline
+                preload="metadata"
                 className="max-h-[70vh] w-full"
               />
             ) : null}
