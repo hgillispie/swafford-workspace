@@ -7,10 +7,15 @@ the root `package.json` `pnpm.patchedDependencies`, and must be described here.
 
 `@agent-native/core@0.201.0-nightly-20261005153421` patches `dist/deploy/build.js`:
 
-- Keep `@img/sharp-linux-x64` when pruning serverless bundles. Sharp's glibc
-  package name ends in `linux-x64`, which the stock pruner did not treat as a
-  runnable Linux binary, so a Mac install shipped only darwin-arm64 and Assets
-  crashed on Netlify.
+- Keep only glibc linux-x64 native packages when pruning serverless bundles:
+  napi-rs `*-linux-x64-gnu` and sharp's `@img/sharp-linux-x64`. The stock
+  pruner treated musl and arm64 as runnable too, so a Mac install that
+  downloaded every arch shipped four `@napi-rs/canvas` binaries and Slides
+  exceeded the Netlify function budget. Sharp's musl packages are named
+  `linuxmusl-*` (no hyphen), so the platform matcher includes that spelling
+  and deletes them once a glibc binary is present. Without the `linux-x64`
+  suffix, sharp's glibc package was not treated as runnable and Assets
+  crashed on Netlify with only a darwin binary left.
 - When `AGENT_NATIVE_SERVERLESS_FFMPEG_ARCH` is `x64` or `arm64`, bundle
   `ffmpeg-static` even if the build host is not that Linux arch. Apps that
   depend on it (clips, content) get a downloaded linux binary in the function
