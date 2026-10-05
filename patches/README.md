@@ -20,6 +20,15 @@ the root `package.json` `pnpm.patchedDependencies`, and must be described here.
   `ffmpeg-static` even if the build host is not that Linux arch. Apps that
   depend on it (clips, content) get a downloaded linux binary in the function
   copy. The host's own ffmpeg binary is left unchanged.
+- `dist/cli/doctor.js`: the build hook used to print "fix them before the
+  build can continue" for every finding, before it checked the gate. Netlify
+  sets `CI=true`, but that variable is not a strict toggle. The build fails
+  only when `agent-native build --strict` is passed or
+  `agent-native.json` has `doctor.failOnBuild: true` (the default). Workspace
+  apps set `failOnBuild` to false because the template findings are reviewed
+  false positives (`process.env` deploy flags and child tables scoped through
+  a parent). The patch prints the abort banner only when the build will exit,
+  and otherwise logs that the build is continuing.
 
 ## Retired
 
