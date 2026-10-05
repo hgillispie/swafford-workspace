@@ -115,3 +115,43 @@
          copyInstalledBrowserRuntimePackages(nitro.options.output.serverDir);
          copyInstalledExternalSsrPackages(nitro.options.output.serverDir);
          sanitizeServerlessFunctionPackageManifest(nitro.options.output.serverDir);
+diff --git a/dist/cli/doctor.js b/dist/cli/doctor.js
+--- a/dist/cli/doctor.js
++++ b/dist/cli/doctor.js
+@@ -454,11 +454,22 @@
+     const report = workspaceRoots === null
+         ? runDoctorScan({ root })
+         : runWorkspaceDoctorScan(root, workspaceRoots.scanRoots);
+-    if (report.findings.length > 0) {
++    const fail = shouldFailBuild(report.findings.length > 0, {
++        strict: options.strict,
++        failOnBuild: config.failOnBuild,
++    });
++    // CI=true does not enable --strict. Netlify sets CI, and template apps
++    // opt out with doctor.failOnBuild: false. Only print the abort banner
++    // when the build will actually exit.
++    if (report.findings.length > 0 && fail) {
+         io.err(`\n[doctor] ${report.findings.length} finding(s) from \`agent-native doctor\` — fix them before the build can continue.`);
+         for (const f of report.findings) {
+             io.err(`  [${f.guard}] ${f.file}:${f.line} — ${f.message}`);
+         }
++        io.err(`\n[doctor] Failing build: ${options.strict ? "--strict was passed" : "the doctor.failOnBuild gate is enabled (default: true)"}.`);
++    }
++    else if (report.findings.length > 0) {
++        io.err(`\n[doctor] ${report.findings.length} finding(s) from \`agent-native doctor\`. Continuing because doctor.failOnBuild is false.`);
+     }
+     if (report.warnings.length > 0) {
+         io.err(`\n[doctor] ${report.warnings.length} planned migration warning(s) — no rewrite is available yet.`);
+@@ -466,12 +477,5 @@
+             io.err(`  [${warning.guard}] ${warning.file}:${warning.line} — ${warning.message}`);
+         }
+     }
+-    const fail = shouldFailBuild(report.findings.length > 0, {
+-        strict: options.strict,
+-        failOnBuild: config.failOnBuild,
+-    });
+-    if (fail) {
+-        io.err(`\n[doctor] Failing build: ${options.strict ? "--strict was passed" : "the doctor.failOnBuild gate is enabled (default: true)"}.`);
+-    }
+     return { ok: !fail, report };
+ }
