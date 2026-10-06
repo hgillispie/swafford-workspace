@@ -14,10 +14,12 @@ vi.mock("@agent-native/core/client/hooks", () => ({
 import { callAction } from "@agent-native/core/client/hooks";
 
 import {
+  BROWSER_MAX_PART_BYTES as serverMaxPartBytes,
   isMissingMultipartUpload,
   planParts,
 } from "../../../../packages/object-storage/src/parts.ts";
 import {
+  BROWSER_MAX_PART_BYTES,
   coerceByteCount,
   missingPartNumbers,
   normalizeStoredParts,
@@ -41,12 +43,15 @@ describe("planParts", () => {
     expect(threePointNineGb.partCount).toBeLessThan(200);
   });
 
-  it("uses 128 MiB parts for a 16 GiB file instead of the old 32 MiB cap", () => {
+  it("caps a 16 GiB file at 32 MiB parts", () => {
     const sixteenGib = 16 * 1024 ** 3;
     const plan = planParts(sixteenGib);
-    expect(plan.partSize).toBe(128 * 1024 * 1024);
-    expect(plan.partCount).toBe(128);
+    expect(BROWSER_MAX_PART_BYTES).toBe(serverMaxPartBytes);
+    expect(plan.partSize).toBe(32 * 1024 * 1024);
+    expect(plan.partSize).toBe(BROWSER_MAX_PART_BYTES);
+    expect(plan.partCount).toBe(512);
     expect(plan.partCount).toBeLessThanOrEqual(10_000);
+    expect(planParts(17_187_792_609).partSize).toBe(32 * 1024 * 1024);
   });
 
   it("stays under 10,000 parts for a multi-terabyte file", () => {
@@ -116,12 +121,13 @@ describe("transfer errors", () => {
   it("retries only transient part statuses", () => {
     expect(shouldRetryPartStatus(403, 1)).toBe(false);
     expect(shouldRetryPartStatus(0, 1)).toBe(true);
-    expect(shouldRetryPartStatus(503, 3)).toBe(true);
-    expect(shouldRetryPartStatus(503, 4)).toBe(false);
+    expect(shouldRetryPartStatus(503, 4)).toBe(true);
+    expect(shouldRetryPartStatus(503, 5)).toBe(false);
     expect(partUploadError(403, "<Code>AccessDenied</Code>", false)).toContain(
       "403",
     );
     expect(partUploadError(200, "", true)).toContain("ETag");
+    expect(partUploadError(0, "", false)).toMatch(/closed the connection/i);
   });
 
   it("recognizes a missing multipart session", () => {
@@ -189,7 +195,7 @@ describe("multipart resume", () => {
     expect(maxInFlight).toBeLessThanOrEqual(PART_CONCURRENCY);
   });
 
-  it("keeps at most six part uploads in flight", async () => {
+  it("keeps at most three part uploads in flight", async () => {
     const file = new File([new Uint8Array(80)], "wide.bin");
     let inFlight = 0;
     let maxInFlight = 0;
@@ -218,6 +224,69 @@ describe("multipart resume", () => {
       },
     });
     expect(maxInFlight).toBe(PART_CONCURRENCY);
+  });
+
+  it("does not move the progress total backward when a part resets", async () => {
+    const file = new File([new Uint8Array(80)], "clip.mp4");
+    const seen: number[] = [];
+    await runMultipartUpload({
+      id: "file-progress",
+      file,
+      partSize: 40,
+      partCount: 2,
+      done: new Map(),
+      signal: new AbortController().signal,
+      onProgress: (loaded) => seen.push(loaded),
+      sign: async (partNumbers) =>
+        partNumbers.map((partNumber) => ({
+          partNumber,
+          url: `https://example.test/${partNumber}`,
+        })),
+      put: async (_url, body, _signal, onBytes) => {
+        onBytes(body.size);
+        onBytes(Math.floor(body.size / 5));
+        return '"etag"';
+      },
+      complete: async () => undefined,
+    });
+    expect(seen.length).toBeGreaterThan(1);
+    for (let index = 1; index < seen.length; index += 1) {
+      expect(seen[index]).toBeGreaterThanOrEqual(seen[index - 1] ?? 0);
+    }
+    expect(seen[seen.length - 1]).toBe(file.size);
+  });
+
+  it("retries a reset part without dropping the parts beside it", async () => {
+    const file = new File([new Uint8Array(80)], "clip.mp4");
+    const attempts = new Map<number, number>();
+    await runMultipartUpload({
+      id: "file-reset",
+      file,
+      partSize: 40,
+      partCount: 2,
+      done: new Map(),
+      signal: new AbortController().signal,
+      onProgress: () => undefined,
+      sign: async (partNumbers) =>
+        partNumbers.map((partNumber) => ({
+          partNumber,
+          url: `https://example.test/${partNumber}`,
+        })),
+      put: async (url) => {
+        const partNumber = Number(new URL(url).pathname.slice(1));
+        const count = (attempts.get(partNumber) ?? 0) + 1;
+        attempts.set(partNumber, count);
+        if (partNumber === 1 && count === 1) {
+          throw Object.assign(new Error("closed"), { status: 0 });
+        }
+        return `"${partNumber}"`;
+      },
+      complete: async (parts) => {
+        expect(parts.map((part) => part.etag)).toEqual(['"1"', '"2"']);
+      },
+    });
+    expect(attempts.get(1)).toBe(2);
+    expect(attempts.get(2)).toBe(1);
   });
 
   it("continues a listed upload from the first missing part", async () => {
@@ -374,6 +443,111 @@ describe("multipart resume", () => {
       if (original) vi.stubGlobal("XMLHttpRequest", original);
       else vi.unstubAllGlobals();
     }
+  });
+
+  it("replaces an empty upload whose parts are too large to finish", async () => {
+    const file = new File([new Uint8Array(40)], "DJI_shop video_0003_D.MP4");
+    call.mockImplementation(async (name, params) => {
+      if (name === "list-dump-parts") {
+        return {
+          id: "row-big",
+          filename: file.name,
+          sizeBytes: file.size,
+          partSize: 128 * 1024 * 1024,
+          partCount: 1,
+          parts: [],
+        };
+      }
+      if (name === "restart-dump-upload") {
+        expect(params).toEqual({ id: "row-big", replaceEmpty: true });
+        return {
+          id: "row-big",
+          filename: file.name,
+          sizeBytes: file.size,
+          partSize: 40,
+          partCount: 1,
+          parts: [],
+          restarted: true,
+          message: "Sending it again in smaller parts.",
+        };
+      }
+      if (name === "sign-dump-parts") {
+        return { parts: [{ partNumber: 1, url: "https://b2.test/1" }] };
+      }
+      if (name === "complete-dump-upload") return { id: "row-big" };
+      throw new Error(`unexpected ${String(name)}`);
+    });
+    const original = globalThis.XMLHttpRequest;
+    class FakeXhr {
+      status = 200;
+      responseText = "";
+      upload = { onprogress: (_event: ProgressEvent) => undefined };
+      private load: (() => void) | null = null;
+      open() {}
+      set responseType(_value: string) {}
+      set withCredentials(_value: boolean) {}
+      getResponseHeader() {
+        return '"small"';
+      }
+      send(body: Blob) {
+        expect(body.size).toBe(40);
+        this.load?.();
+      }
+      set onload(handler: () => void) {
+        this.load = handler;
+      }
+      set onerror(_handler: () => void) {}
+      set onabort(_handler: () => void) {}
+      abort() {}
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXhr);
+    try {
+      const result = await resumeDumpFile({
+        id: "row-big",
+        file,
+        signal: new AbortController().signal,
+        onProgress: () => undefined,
+      });
+      expect(result.message).toMatch(/smaller parts/);
+      expect(call.mock.calls.map((entry) => entry[0])).toEqual([
+        "list-dump-parts",
+        "restart-dump-upload",
+        "sign-dump-parts",
+        "complete-dump-upload",
+      ]);
+    } finally {
+      if (original) vi.stubGlobal("XMLHttpRequest", original);
+      else vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps an in-progress upload that already stored parts", async () => {
+    const file = new File([new Uint8Array(40)], "keep.mp4");
+    call.mockImplementation(async (name) => {
+      if (name === "list-dump-parts") {
+        return {
+          id: "row-keep",
+          filename: file.name,
+          sizeBytes: file.size,
+          partSize: 128 * 1024 * 1024,
+          partCount: 1,
+          parts: [{ partNumber: 1, etag: '"stored"' }],
+        };
+      }
+      if (name === "complete-dump-upload") return { id: "row-keep" };
+      throw new Error(`unexpected ${String(name)}`);
+    });
+    const result = await resumeDumpFile({
+      id: "row-keep",
+      file,
+      signal: new AbortController().signal,
+      onProgress: () => undefined,
+    });
+    expect(result).toEqual({});
+    expect(call.mock.calls.map((entry) => entry[0])).toEqual([
+      "list-dump-parts",
+      "complete-dump-upload",
+    ]);
   });
 
   it("rejects a different file with the sizes, not a generic failure", async () => {

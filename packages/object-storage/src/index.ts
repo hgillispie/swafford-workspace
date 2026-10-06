@@ -213,7 +213,12 @@ export function objectKey(
   return `org/${orgId}/files/${fileId}/${safeBasename(filename)}`;
 }
 
-export { isMissingMultipartUpload, partCountFor, planParts } from "./parts.js";
+export {
+  BROWSER_MAX_PART_BYTES,
+  isMissingMultipartUpload,
+  partCountFor,
+  planParts,
+} from "./parts.js";
 
 export function contentTypeForName(filename: string): string {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";

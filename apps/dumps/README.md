@@ -33,19 +33,36 @@ are the fallback for the three non-secret names.
 ## Browser uploads
 
 The browser asks Dumps to start a multipart upload, receives presigned part
-URLs, and PUTs the bytes to B2. Part size starts at 8 MiB and grows toward
-128 MiB for multi-gigabyte files so a file stays under 10,000 parts. Six
-parts run at once, and two smaller files can be in flight together. A failed
-upload stays open. Choose the same file from its row to resume. Already
-stored parts are skipped. If Backblaze no longer has that upload session,
-resume starts the same row over and says so. A failed part shows the
-Backblaze or browser error on the row.
+URLs, and PUTs the bytes to B2. Part size starts at 8 MiB and grows with the
+file, capped at 32 MiB, so a file stays under 10,000 parts. A 16 GiB file is
+512 parts. Three parts run at once, and two smaller files can be in flight
+together.
+
+32 MiB is the cap because 128 MiB parts with six uploads at once did not
+finish. Each PUT reset after a few megabytes. Six of those resets are the
+9–15 MB the progress bar showed, and the bar jumped backward because a retry
+cleared that part's in-flight bytes. Backblaze error responses omit
+`Access-Control-Allow-Origin`, so the browser cannot read the HTTP status
+and the row says the connection closed. Parts that did land stay stored.
+Resume sends only the missing part numbers, asks for a fresh URL after a
+connection reset, and does not move the progress total backward. An open
+upload with no stored parts and a part size above 32 MiB is aborted and
+started again in 32 MiB parts. An upload that already has stored parts keeps
+its part size.
+
+A failed upload stays open. Choose the same file from its row to resume.
+Already stored parts are skipped. If Backblaze no longer has that upload
+session, resume starts the same row over and says so. A failed part shows
+the Backblaze or browser error on the row.
 
 `configure-dump-cors` writes the bucket CORS rule: production origin
 `https://swafford-workspace.netlify.app`, the workspace gateway on port
 8080, localhost ports 3000 and 5173, methods `GET`, `PUT`, `HEAD`, and
 `POST`, header `*`, and exposed `ETag`. The bucket already has this rule
-as `workspaceUploads`. Starting an upload does not change it.
+as `workspaceUploads`. Starting an upload does not change it. Successful
+PUTs from that origin already return the origin and `ETag`. No CORS change
+is required for large files. Backblaze omits the origin header on error
+responses, which is why a failed part looks like a network error.
 
 Preview and download use a 15-minute presigned GET. Preview is inline so an
 MP4 plays in the browser. Download uses an attachment disposition.
