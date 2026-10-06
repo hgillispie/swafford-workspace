@@ -16,6 +16,7 @@ import {
   filesFromDrop,
   filesFromInput,
   resumeDumpFile,
+  transferErrorMessage,
   uploadDumpFile,
   type DumpTransferFile,
 } from "@/lib/dump-transfer";
@@ -172,10 +173,15 @@ export function DumpLibrary() {
     if (items.length === 0) return;
     const cache = new Map<string, string | null>();
     const root = folderId ?? null;
-    const planned: Array<DumpTransferFile & { key: string; folder: string | null }> =
-      [];
+    const planned: Array<
+      DumpTransferFile & { key: string; folder: string | null }
+    > = [];
     for (const item of items) {
-      const destination = await ensureDumpFolders(item.relativePath, root, cache);
+      const destination = await ensureDumpFolders(
+        item.relativePath,
+        root,
+        cache,
+      );
       const key = `${item.relativePath}:${item.file.size}:${item.file.lastModified}`;
       planned.push({ ...item, key, folder: destination });
       setTransfers((current) => [
@@ -198,7 +204,9 @@ export function DumpLibrary() {
             onProgress: (loaded) => {
               setTransfers((current) =>
                 current.map((transfer) =>
-                  transfer.key === item.key ? { ...transfer, loaded } : transfer,
+                  transfer.key === item.key
+                    ? { ...transfer, loaded }
+                    : transfer,
                 ),
               );
             },
@@ -207,19 +215,23 @@ export function DumpLibrary() {
             current.filter((transfer) => transfer.key !== item.key),
           );
         } catch (error) {
-          const message = actionErrorMessage(error) ?? "Upload failed.";
+          const message = transferErrorMessage(error, "Upload failed.");
           setTransfers((current) =>
             current.map((transfer) =>
-              transfer.key === item.key ? { ...transfer, error: message } : transfer,
+              transfer.key === item.key
+                ? { ...transfer, error: message }
+                : transfer,
             ),
           );
+          const detail = /[.!?]$/.test(message) ? message : `${message}.`;
           setNotice(
-            `${item.file.name} stopped. Choose the same file from its row to resume.`,
+            `${item.file.name} stopped: ${detail} Choose the same file from its row to resume.`,
           );
         }
       }
     };
-    await Promise.all([worker(), worker()]);
+    const large = planned.some((item) => item.file.size >= 1024 * 1024 * 1024);
+    await Promise.all(large ? [worker()] : [worker(), worker()]);
     void library.refetch();
   }
 
@@ -234,7 +246,7 @@ export function DumpLibrary() {
       { key, filename: file.name, loaded: 0, total: file.size },
     ]);
     try {
-      await resumeDumpFile({
+      const resumed = await resumeDumpFile({
         id,
         file,
         signal: new AbortController().signal,
@@ -246,10 +258,13 @@ export function DumpLibrary() {
           );
         },
       });
-      setTransfers((current) => current.filter((transfer) => transfer.key !== key));
+      setTransfers((current) =>
+        current.filter((transfer) => transfer.key !== key),
+      );
+      if (resumed.message) setNotice(resumed.message);
       void library.refetch();
     } catch (error) {
-      const message = actionErrorMessage(error) ?? "Resume failed.";
+      const message = transferErrorMessage(error, "Resume failed.");
       setTransfers((current) =>
         current.map((transfer) =>
           transfer.key === key ? { ...transfer, error: message } : transfer,
@@ -438,9 +453,8 @@ export function DumpLibrary() {
               <div className="flex justify-between gap-3">
                 <span className="truncate">{transfer.filename}</span>
                 <span className="text-muted-foreground">
-                  {transfer.error
-                    ? "Failed"
-                    : `${formatBytes(transfer.loaded)} / ${formatBytes(transfer.total)}`}
+                  {transfer.error ? "Failed · " : ""}
+                  {formatBytes(transfer.loaded)} / {formatBytes(transfer.total)}
                 </span>
               </div>
               <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">

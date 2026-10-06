@@ -31,11 +31,15 @@ The public root opens the shared sign-in page. Signed-in members land on
 
 Upload flow: `start-dump-upload`, then `sign-dump-parts` in batches, PUT each
 part from the browser, then `complete-dump-upload` with the ETags. Part size
-is 8 MiB and grows toward 32 MiB for multi-gigabyte files, staying under
-10,000 parts. New objects use SSE-B2 (`AES256`). Do not enable Object Lock.
+is 8 MiB and grows toward 128 MiB for multi-gigabyte files, staying under
+10,000 parts. The browser uploads six parts at once. New objects use SSE-B2
+(`AES256`). Do not enable Object Lock.
 
 Resume flow: `list-dump-parts` returns parts already in the bucket. Sign and
-PUT only the missing part numbers, then complete.
+PUT only the missing part numbers, then complete. If Backblaze dropped the
+multipart session, `restart-dump-upload` opens a new session on the same row
+and the file is sent again from the start. Part upload failures stay visible
+in the library.
 
 Shop machines copy into `org/{orgId}/inbox/` with rclone. See `README.md` for
 the command. Run `index-dump-bucket` afterward. Pass `cursor` when the result

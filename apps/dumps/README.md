@@ -10,10 +10,10 @@ Open the library at `/dumps`.
 
 The bucket is private, server-side encryption is on, and Object Lock is off.
 
-| Setting | Value |
-| --- | --- |
-| Bucket | `swafford-video-dumps` |
-| Region | `us-east-005` |
+| Setting     | Value                                    |
+| ----------- | ---------------------------------------- |
+| Bucket      | `swafford-video-dumps`                   |
+| Region      | `us-east-005`                            |
 | S3 endpoint | `https://s3.us-east-005.backblazeb2.com` |
 
 Server-only variables. The endpoint, region, and bucket name are not secret
@@ -34,10 +34,12 @@ are the fallback for the three non-secret names.
 
 The browser asks Dumps to start a multipart upload, receives presigned part
 URLs, and PUTs the bytes to B2. Part size starts at 8 MiB and grows toward
-32 MiB for multi-gigabyte files so a file stays under 10,000 parts. Several
-parts run at once, and two files can be in flight together. A failed upload
-stays open. Choose the same file from its row to resume. Already stored parts
-are skipped.
+128 MiB for multi-gigabyte files so a file stays under 10,000 parts. Six
+parts run at once, and two smaller files can be in flight together. A failed
+upload stays open. Choose the same file from its row to resume. Already
+stored parts are skipped. If Backblaze no longer has that upload session,
+resume starts the same row over and says so. A failed part shows the
+Backblaze or browser error on the row.
 
 `configure-dump-cors` writes the bucket CORS rule: production origin
 `https://swafford-workspace.netlify.app`, the workspace gateway on port

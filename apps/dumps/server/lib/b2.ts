@@ -11,6 +11,7 @@ export {
   downloadToFile,
   ensureBucket,
   ensureBucketCors,
+  isMissingMultipartUpload,
   listBucketPage,
   listUploadedParts,
   missingB2Env,
