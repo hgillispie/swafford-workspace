@@ -1,6 +1,12 @@
-# On-demand ffmpeg worker. Deploy from the workspace root so the Docker
-# build context includes the monorepo:
-#   fly deploy --config services/media-worker/fly.toml --dockerfile services/media-worker/Dockerfile
+# On-demand ffmpeg worker. From the workspace root:
+#   fly deploy . --config services/media-worker/fly.toml --dockerfile services/media-worker/Dockerfile --ha=false
+#
+# The `.` is the Docker build context (the monorepo). Fly resolves a
+# dockerfile path written in this file relative to this directory, so a
+# repo-root path would be looked up twice. Leave [build].dockerfile unset
+# and pass --dockerfile, which Fly resolves from the working directory.
+# `fly deploy services/media-worker` would send only this directory as
+# context, and the image COPY would miss the workspace.
 #
 # No HTTP service. Cutline and Opus start the stopped machine with the
 # Machines API. Exit 0 after the queue is idle does not restart it
@@ -9,15 +15,12 @@
 app = "swafford-media-worker"
 primary_region = "iad"
 
-[build]
-  # Path is relative to the workspace root, which is the Docker build context:
-  #   fly deploy . --config services/media-worker/fly.toml --ha=false
-  dockerfile = "services/media-worker/Dockerfile"
-
 [env]
   MEDIA_WORKDIR = "/tmp/media-worker"
   MEDIA_WORKER_IDLE_MINUTES = "5"
-  TRANSCRIPTION_PROVIDER = "builder"
+  # Production has no Builder key. The worker posts audio to Opus.
+  # Mac testing overrides this with whisper or builder.
+  TRANSCRIPTION_PROVIDER = "app"
 
 [[restart]]
   policy = "on-failure"

@@ -31,7 +31,7 @@ All configuration is environment variables.
 | `B2_APPLICATION_KEY` | yes | Backblaze application key |
 | `B2_FORCE_PATH_STYLE` | no | `true` for MinIO. Leave unset for B2. |
 | `B2_SSE` | no | Default `AES256` (SSE-B2). Set `off` for MinIO. |
-| `TRANSCRIPTION_PROVIDER` | no | `app` when `MEDIA_APP_TRANSCRIBE_URL` is set, otherwise `builder` when a Builder key is present, otherwise `whisper`. Also `deepgram` or `assemblyai`. |
+| `TRANSCRIPTION_PROVIDER` | no | Image and Fly default `app` (Opus callback). A Mac can set `whisper`, or `builder` with `BUILDER_PRIVATE_KEY`. Also `deepgram` or `assemblyai`. When this is unset, the worker uses `app` if `MEDIA_APP_TRANSCRIBE_URL` is set, otherwise `builder` when a Builder key is present, otherwise `whisper`. |
 | `MEDIA_APP_TRANSCRIBE_URL` | production ASR | Opus callback, for example `https://<netlify-site>/opus/api/worker/transcribe`. The app calls Builder with the workspace connection. |
 | `MEDIA_WORKER_SECRET` | with the callback | Shared with the Netlify app. Sent as `Authorization: Bearer`. |
 | `BUILDER_PRIVATE_KEY` | only without the callback | Builder.io private key from account settings. Not needed on the worker when the callback URL is set. |
@@ -48,7 +48,7 @@ All configuration is environment variables.
 | `FLY_IMAGE` | to create a machine | Registry image, only if no machine exists yet. |
 | `FLY_MACHINE_SIZE` | no | Default `performance-4x` (4 dedicated vCPU, 8 GB). |
 | `FLY_REGION` | no | Default `iad`. |
-| `FLY_ROOTFS_GB` | no | Ephemeral root disk when the launcher creates a machine. Default `80`. |
+| `FLY_ROOTFS_GB` | no | Ephemeral root disk when the launcher creates a machine. Default `50`. Fly currently rejects anything above 50 GB. |
 
 Transcription is behind `src/transcribe.ts`. In production the worker posts each audio chunk to Opus (`MEDIA_APP_TRANSCRIBE_URL`) and the app calls Builder ASR with the Builder private key already connected on Netlify (Builder.io account settings, or the workspace vault). The worker does not get a second Builder key. Whisper is the local fallback when neither the callback nor a Builder key is configured. Deepgram and AssemblyAI remain optional.
 
@@ -72,12 +72,14 @@ docker run --rm \
   -e DATABASE_URL \
   -e B2_S3_ENDPOINT -e B2_REGION -e B2_BUCKET \
   -e B2_KEY_ID -e B2_APPLICATION_KEY \
-  -e TRANSCRIPTION_PROVIDER=builder \
-  -e BUILDER_PRIVATE_KEY \
+  -e MEDIA_APP_TRANSCRIBE_URL \
+  -e MEDIA_WORKER_SECRET \
   -e MEDIA_WORKDIR=/tmp/media-worker \
   -e MEDIA_WORKER_IDLE_MINUTES=5 \
   swafford-media-worker
 ```
+
+The image defaults to `TRANSCRIPTION_PROVIDER=app`. For a Mac with no Opus callback, pass `-e TRANSCRIPTION_PROVIDER=whisper`, or `-e TRANSCRIPTION_PROVIDER=builder` together with `-e BUILDER_PRIVATE_KEY`.
 
 The image is Debian bookworm, Node 22, ffmpeg, OpenCV (Haar face tracking), DejaVu and Liberation fonts, and faster-whisper. No GPU runtime. H.264 encoding is CPU (`libx264`).
 
@@ -106,20 +108,22 @@ fly secrets set --app swafford-media-worker \
   B2_BUCKET="swafford-video-dumps" \
   B2_KEY_ID="…" \
   B2_APPLICATION_KEY="…" \
-  TRANSCRIPTION_PROVIDER="builder" \
-  BUILDER_PRIVATE_KEY="…" \
+  MEDIA_APP_TRANSCRIBE_URL="https://<netlify-site>/opus/api/worker/transcribe" \
+  MEDIA_WORKER_SECRET="…" \
   MEDIA_WORKER_IDLE_MINUTES="5" \
   MEDIA_WORKDIR="/tmp/media-worker"
-fly deploy . --config services/media-worker/fly.toml --ha=false
+fly deploy . --config services/media-worker/fly.toml --dockerfile services/media-worker/Dockerfile --ha=false
 fly machine update <id> --app swafford-media-worker \
   --vm-size performance-4x --memory 8192 \
-  --rootfs-size 80gb --rootfs-persist never -y
+  --rootfs-size 50gb --rootfs-persist never -y
 fly machine stop <id> --app swafford-media-worker
 ```
 
-`fly.toml` sets the VM size and `persist_rootfs = never`. `--rootfs-size 80gb` is the scratch ceiling for one original plus its outputs (about three times a large file). That disk is billed while the machine exists, including when it is stopped. It is not a Fly Volume, and it does not keep footage.
+Run that `fly deploy` from the workspace root. The `.` is the Docker build context, so the image can copy the monorepo. `--config` selects this app's `fly.toml`. `--dockerfile` is required because a dockerfile path inside `fly.toml` is resolved relative to `services/media-worker/`, and a repo-root path there is looked up twice. `fly deploy services/media-worker` would use only that directory as context and the build would miss the rest of the workspace.
 
-On Netlify, set `WORKER_LAUNCHER=fly`, `FLY_API_TOKEN` (a deploy token for this app: `fly tokens create deploy -a swafford-media-worker`), `FLY_APP=swafford-media-worker`, and `FLY_MACHINE_ID` to the id from `fly machines list`. Optional: `FLY_IMAGE` (only used to create a machine when the id is missing), `FLY_MACHINE_SIZE=performance-4x`, `FLY_REGION=iad`, `FLY_ROOTFS_GB=80`.
+`fly.toml` sets the VM size, `TRANSCRIPTION_PROVIDER=app`, and `persist_rootfs = never`. Fly currently caps the rootfs at 50 GB (an 80 GB size was rejected), so the scratch disk is `--rootfs-size 50gb`. That disk is billed while the machine exists, including when it is stopped. It is not a Fly Volume, and it does not keep footage.
+
+On Netlify, set `WORKER_LAUNCHER=fly`, `FLY_API_TOKEN` (a deploy token for this app: `fly tokens create deploy -a swafford-media-worker`), `FLY_APP=swafford-media-worker`, and `FLY_MACHINE_ID` to the id from `fly machines list`. Optional: `FLY_IMAGE` (only used to create a machine when the id is missing), `FLY_MACHINE_SIZE=performance-4x`, `FLY_REGION=iad`, `FLY_ROOTFS_GB=50`. Do not set `TRANSCRIPTION_PROVIDER=builder` on the worker. Mac testing can set `TRANSCRIPTION_PROVIDER=whisper` or `TRANSCRIPTION_PROVIDER=builder` (with `BUILDER_PRIVATE_KEY`) in `.env.local`.
 
 Published Fly prices as of 1 Oct 2026 (`https://fly.io/pricing/`): `performance-4x` · 8 GB is **$0.1833 per hour** ($0.00005092 per second) while the machine is running, and a stopped machine’s rootfs is **$0.15 per GB per month**. Always-on for this preset is about **$132 per month** before disk. The worked example for a month of edits is in the pull request. A 4 GB machine can run out of memory decoding 4K.
 

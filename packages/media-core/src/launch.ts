@@ -210,10 +210,11 @@ async function findMachine(
 }
 
 function rootfsGb(env: Env): number {
+  // Fly currently rejects a rootfs above 50 GB.
   const raw = env.FLY_ROOTFS_GB?.trim();
-  if (raw === undefined || raw === "") return 80;
+  if (raw === undefined || raw === "") return 50;
   const value = Number(raw);
-  if (!Number.isFinite(value) || value < 0) return 80;
+  if (!Number.isFinite(value) || value < 0) return 50;
   return Math.round(value);
 }
 

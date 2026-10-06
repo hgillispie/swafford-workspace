@@ -23,7 +23,13 @@ RUN corepack enable && corepack prepare pnpm@10.29.1 --activate
 
 COPY . .
 
-RUN pnpm install --frozen-lockfile --filter media-worker...
+# Root postinstall builds creative-context and embedding. Selecting only
+# media-worker skips those packages, so the build fails without zod and
+# playwright. Include them and their dependencies; do not install every app.
+RUN pnpm install --frozen-lockfile \
+    --filter media-worker... \
+    --filter ./packages/creative-context... \
+    --filter ./packages/embedding...
 
 WORKDIR /repo/services/media-worker
 # Scratch lives on the machine rootfs (/tmp). Each job downloads its source
@@ -31,5 +37,7 @@ WORKDIR /repo/services/media-worker
 # volume here: a stopped machine resets this disk (persist_rootfs = never).
 ENV MEDIA_WORKDIR=/tmp/media-worker
 ENV MEDIA_WORKER_IDLE_MINUTES=5
-ENV TRANSCRIPTION_PROVIDER=builder
+# Production posts audio to Opus (MEDIA_APP_TRANSCRIBE_URL). A Mac can
+# override this with whisper, or with builder plus BUILDER_PRIVATE_KEY.
+ENV TRANSCRIPTION_PROVIDER=app
 CMD ["pnpm", "start"]
