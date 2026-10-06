@@ -31,15 +31,23 @@ The public root opens the shared sign-in page. Signed-in members land on
 
 Upload flow: `start-dump-upload`, then `sign-dump-parts` in batches, PUT each
 part from the browser, then `complete-dump-upload` with the ETags. Part size
-is 8 MiB and grows toward 128 MiB for multi-gigabyte files, staying under
-10,000 parts. The browser uploads six parts at once. New objects use SSE-B2
-(`AES256`). Do not enable Object Lock.
+is 8 MiB and grows with the file, capped at 32 MiB, staying under 10,000
+parts. A 16 GiB file is 512 parts. The browser uploads three parts at once.
+New objects use SSE-B2 (`AES256`). Do not enable Object Lock. Do not raise
+the 32 MiB cap: 128 MiB parts with six in flight reset after a few megabytes
+each, stored zero parts, and the progress total jumped backward on retry.
 
 Resume flow: `list-dump-parts` returns parts already in the bucket. Sign and
-PUT only the missing part numbers, then complete. If Backblaze dropped the
-multipart session, `restart-dump-upload` opens a new session on the same row
-and the file is sent again from the start. Part upload failures stay visible
-in the library.
+PUT only the missing part numbers, then complete. A connection reset retries
+that part with a fresh URL and leaves the progress total where it was.
+Backblaze error responses omit `Access-Control-Allow-Origin`, so a failed
+PUT often has status 0 and the message says the connection closed. If
+Backblaze dropped the multipart session, `restart-dump-upload` opens a new
+session on the same row and the file is sent again from the start. If the
+session is still open, has no stored parts, and its part size is above 32
+MiB, resume calls `restart-dump-upload` with `replaceEmpty: true` so the
+same row continues in 32 MiB parts. Sessions that already have stored parts
+keep their part size. Part upload failures stay visible in the library.
 
 Shop machines copy into `org/{orgId}/inbox/` with rclone. See `README.md` for
 the command. Run `index-dump-bucket` afterward. Pass `cursor` when the result
@@ -64,7 +72,9 @@ runs also read a workspace root `.env` when a name is unset.
 `http://localhost:8080`, `http://127.0.0.1:8080`, and localhost ports 3000
 and 5173, methods GET, PUT, HEAD, and POST, header `*`, and exposes `ETag`.
 The live bucket already has this rule under `workspaceUploads`. Do not call
-the action unless an origin is missing.
+the action unless an origin is missing. Successful PUTs already return the
+origin and `ETag`. Error responses omit the origin header; that is Backblaze
+behavior, not a missing bucket rule.
 
 Object keys look like `org/{orgId}/files/{id}/{filename}`.
 

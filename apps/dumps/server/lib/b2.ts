@@ -3,6 +3,7 @@ export {
   B2ConfigError,
   BUCKET_CORS_ORIGINS,
   abortUpload,
+  BROWSER_MAX_PART_BYTES,
   bucketName,
   completeUpload,
   contentTypeForName,

@@ -1,8 +1,20 @@
 const MIN_PART_SIZE = 8 * 1024 * 1024;
-/** Backblaze's recommended part is 100 MB. 128 MiB keeps multi-GB files near
- * the target part count without a 32 MiB cap that turns a 16 GiB upload into
- * 512 round trips. */
-const MAX_PART_SIZE = 128 * 1024 * 1024;
+/**
+ * Largest part a browser PUT to the B2 S3 endpoint should use.
+ *
+ * 32 MiB parts previously carried a 16 GB dump through gigabytes of stored
+ * parts. Raising the cap to 128 MiB and sending six of those at once stored
+ * nothing: each PUT reset after a few megabytes, six of those resets added
+ * up to the 9–15 MB the progress bar showed, and a retry cleared the
+ * in-flight bytes so the bar jumped backward. Backblaze error responses
+ * omit Access-Control-Allow-Origin, so the browser reports a network error
+ * instead of the HTTP status. 32 MiB stays above B2's 5 MiB minimum and
+ * keeps a 16 GiB file at 512 parts. Files that would exceed 10,000 parts
+ * still grow past this cap. An upload that already stored parts keeps the
+ * part size recorded on its row.
+ */
+export const BROWSER_MAX_PART_BYTES = 32 * 1024 * 1024;
+const MAX_PART_SIZE = BROWSER_MAX_PART_BYTES;
 const TARGET_PARTS = 128;
 const MAX_PARTS = 10_000;
 
