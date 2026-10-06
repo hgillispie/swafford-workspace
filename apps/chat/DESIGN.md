@@ -1,15 +1,15 @@
 # Visual Design Contract
 
-Chat is a quiet, full-canvas conversation workbench. AgentKit owns the
-conversation primitives; the template owns the surrounding navigation and
-workspace chrome.
+Chat is a quiet, full-canvas conversation. AgentKit owns the conversation
+primitives; the app owns the thread list around them.
+
+Contract: `operate / signed-in member / start or resume a conversation / type the next message`.
 
 ## Product mode
 
 - Mode: `operate`
-- Audience and cadence: frequent users managing many ongoing agent threads.
-- Primary workflow: begin, resume, pin, and organize conversations without
-  leaving the chat canvas.
+- Audience and cadence: workspace members dropping in for a free-form thread.
+- Primary workflow: begin or resume a conversation and type the next message.
 
 ## Visual direction
 

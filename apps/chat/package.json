@@ -2,7 +2,7 @@
   "name": "chat",
   "displayName": "Chat",
   "private": true,
-  "description": "Minimal chat-first agent-native app template.",
+  "description": "Free-form conversation for notes, writing, and everyday questions.",
   "type": "module",
   "scripts": {
     "migrate:production": "tsx scripts/migrate-production.ts",
@@ -29,6 +29,9 @@
     "@electric-sql/pglite": "^0.5.8",
     "@fontsource-variable/inter": "^5.2.8",
     "@openrouter/ai-sdk-provider": "^2.9.1",
+    "@react-router/dev": "^8.1.0",
+    "@react-router/fs-routes": "^8.1.0",
+    "@swafford-workspace/shared": "workspace:*",
     "@tabler/icons-react": "catalog:",
     "@tanstack/react-query": "^5.99.2",
     "ai": "6.0.258",
@@ -36,19 +39,18 @@
     "h3": "catalog:",
     "isbot": "^5",
     "node-pty": "^1.1.0",
+    "postgres": "^3.4.9",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "^8.1.0",
     "use-sync-external-store": "^1.6.0",
+    "vite": "catalog:",
     "zod": "^4.4.3",
-    "zustand": "^5.0.15",
-    "@swafford-workspace/shared": "workspace:*",
-    "postgres": "^3.4.9",
-    "@react-router/dev": "^8.1.0",
-    "@react-router/fs-routes": "^8.1.0",
-    "vite": "catalog:"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@assistant-ui/store": ">=0.2.9 <0.2.14",
+    "@assistant-ui/tap": "^0.5.14",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",
@@ -100,9 +102,7 @@
     "tsx": "^4.20.3",
     "typescript-7": "catalog:",
     "vaul": "^1.1.2",
-    "vitest": "catalog:",
-    "@assistant-ui/store": ">=0.2.9 <0.2.14",
-    "@assistant-ui/tap": "^0.5.14"
+    "vitest": "catalog:"
   },
   "engines": {
     "node": ">=22.22.0"

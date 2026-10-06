@@ -1,33 +1,9 @@
 # Chat
 
-The minimal agent-native starter app — a clean, ChatGPT-style shell with chat at
-the center, durable threads, standard app navigation, auth, live sync, and
-actions. Start here when you want a real browser app to build on without
-committing to a domain template.
+General-purpose assistant for signed-in workspace members. Open it at `/chat`.
+The home screen is a free-form thread for notes, writing, brainstorming, and
+everyday questions. Auth, the organization, and the Builder model connection
+are shared with the rest of the workspace.
 
-**Live app: [chat.agent-native.com](https://chat.agent-native.com)**
-
-Chat is the basic agent-native app starting point. It gives you the app-agent
-loop wired end to end and one example action, so you can add your own UI, data,
-and actions on top.
-
-## Features
-
-- ChatGPT-style shell with a threads list and durable chat history.
-- Auth, live sync, and application state wired out of the box.
-- The action surface the agent and UI share, plus one example action to copy.
-- A minimal, brandable base for any domain app.
-
-## Develop locally
-
-Scaffold your own copy and run it:
-
-```bash
-npx --yes @agent-native/core@latest create my-app --standalone --template chat
-cd my-app
-corepack enable
-pnpm install
-pnpm dev
-```
-
-Full docs: [agent-native.com/docs/template-chat](https://agent-native.com/docs/template-chat).
+Dispatch lists this app from `package.json` (`name` plus `description`). There
+is no separate app registry.
