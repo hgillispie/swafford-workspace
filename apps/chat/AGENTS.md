@@ -1,9 +1,16 @@
 # Chat — Agent Guide
 
-Chat is the minimal chat-first agent-native app. The public root redirects to
-the shared sign-in/signup page; the authenticated chat app starts at `/home`. Actions carry the real
-capabilities, and screens exist only where a workflow needs durable UI around
-the conversation.
+Chat is the workspace's general-purpose assistant. Signed-in members use it
+for free-form conversation: notes, writing, brainstorming, and everyday
+questions. It is not the workspace admin. Dispatch owns organization setup,
+the vault, app installation, and integrations.
+
+The public root opens the shared sign-in page. Signed-in members land on
+`/home`, which opens a chat thread. Full-page chat stays at `/chat/:threadId`.
+
+Model access uses the workspace Builder connection already configured for
+this deploy. Do not ask anyone to paste an API key, and do not add a new
+provider env var.
 
 ## Skills
 
@@ -11,9 +18,9 @@ The default app skill surface is intentionally small. Promotion, learning,
 translation, changelog, provider, and release workflows are optional; enable
 the matching skill only when this app actually uses that workflow. The
 `docs-search` action reads the version-matched framework docs bundled with
-  `@agent-native/core`; `source-search` reads core and first-party template
-  implementations. Prefer both over memory when package APIs, actions, or agent
-  surfaces are involved.
+`@agent-native/core`; `source-search` reads core and first-party template
+implementations. Prefer both over memory when package APIs, actions, or agent
+surfaces are involved.
 
 ## Core Rules
 
@@ -32,30 +39,39 @@ the matching skill only when this app actually uses that workflow. The
   use app-local vault/OAuth/settings primitives when no reusable connection
   exists. Keep custom setup UI provider-specific and never duplicate storage.
 - Keep actions deterministic and focused. Research, analysis, generation,
-  recommendation, and synthesis start in the AgentSidebar and let the agent
-  orchestrate its tools; follow-ups stay in the same thread rather than moving
-  the user to a second freeform prompt box.
+  recommendation, and synthesis stay in this chat thread. Do not send the
+  member to a second freeform prompt box.
 - Never fabricate. If an action fails or data is missing, say so and recover
   instead of inventing a result or claiming success.
 - Verify a write before reporting it done — re-read the row or the screen.
 - Use `view-screen` or application state when the active page/selection is
   unclear.
+- Do not invent Swafford-specific tools. Answer from the conversation. The
+  template actions below are the whole product surface.
 
-For a custom app, keep `server/plugins/config.ts` aligned with the product
-brand. Its `app.name` is used in transactional emails, and its optional
-`app.logoUrl` can point to an absolute HTTPS logo URL.
+`server/plugins/agent-native-email-branding.ts` sets `app.name` to Chat for
+transactional email. Do not point it at another product.
 
 ## Application State
 
-- `navigation` describes the current view and selected entity ids. The default
-  chat view is `chat` at `/home`; `/` opens the shared sign-in/signup page.
-- `navigate` moves the UI when the app supports it.
+- `navigation` describes the current view. The default chat view is `chat` at
+  `/home` and `/chat/:threadId`. `/` opens the shared sign-in page.
+- `navigate` moves the UI when the member asks to open a thread or settings.
 - `view-screen` is the first tool to call when the user's visible context
   matters.
-- `provider-api-request` calls Slack through the shared workspace connection.
-  Use `provider: "slack"` and an exact Web API path such as `/auth.test`.
-  Missing access pauses the run and opens the contextual connection card; do
-  not ask the user to paste credentials or replace the request with prose.
+- `provider-api-request` calls Slack through the shared workspace connection
+  only when the member asks for Slack. Use `provider: "slack"` and an exact
+  Web API path such as `/auth.test`. Missing access pauses the run and opens
+  the contextual connection card; do not ask the user to paste credentials.
+
+## Actions
+
+| Action | Purpose |
+| --- | --- |
+| `view-screen` | Read the current navigation state. |
+| `navigate` | Open a chat thread, view, or path. |
+| `hello` | Template greeting. Not a product workflow. |
+| `provider-api-request` | Slack Web API, only when the member asks. |
 
 ## Source Changes
 

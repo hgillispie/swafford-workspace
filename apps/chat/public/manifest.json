@@ -1,7 +1,7 @@
 {
   "name": "Chat",
   "short_name": "Chat",
-  "description": "Chat-first agent-native app ready to customize",
+  "description": "Free-form conversation for notes, writing, and everyday questions.",
   "start_url": "./home",
   "background_color": "#111111",
   "theme_color": "#18181B",
