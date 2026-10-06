@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { getDb, schema } from "../server/db.js";
 import { editProject, nowIso, requireUserEmail } from "../server/lib/access.js";
+import { clipLook } from "../server/lib/clip-look.js";
 import { scoreLocally } from "../server/lib/score.js";
 import { parseWords } from "../server/lib/words.js";
 
@@ -31,6 +32,7 @@ export default defineAction({
         and(eq(schema.clips.projectId, id), eq(schema.clips.source, "local")),
       );
     const now = nowIso();
+    const look = clipLook(project);
     await db.insert(schema.clips).values(
       moments.map((item) => ({
         id: crypto.randomUUID(),
@@ -44,6 +46,7 @@ export default defineAction({
         engagement: item.engagement,
         valueScore: item.value,
         shareability: item.shareability,
+        ...look,
         source: "local",
         status: "draft",
         ownerEmail,
@@ -51,6 +54,6 @@ export default defineAction({
         createdAt: now,
       })),
     );
-    return { saved: moments.length, moments };
+    return { saved: moments.length, scorer: "local" as const, moments };
   },
 });

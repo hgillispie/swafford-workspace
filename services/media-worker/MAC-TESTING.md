@@ -10,7 +10,9 @@ From the workspace root, with Docker Desktop running:
 cp services/media-worker/.env.example services/media-worker/.env.local
 ```
 
-Fill `.env.local` with the Neon **unpooled** `DATABASE_URL`, the `B2_*` values, and `BUILDER_PRIVATE_KEY` if you want Builder transcription. Leave `WORKER_LAUNCHER=local`. That adapter does not call Fly.
+Fill `.env.local` with the Neon **unpooled** `DATABASE_URL` and the `B2_*` values. Leave `WORKER_LAUNCHER=local`. That adapter does not call Fly.
+
+For speech recognition, either leave `TRANSCRIPTION_PROVIDER=whisper`, or point `MEDIA_APP_TRANSCRIBE_URL` at a running Opus app (`http://127.0.0.1:<port>/api/worker/transcribe` when Opus is not behind the `/opus` prefix) and set the same `MEDIA_WORKER_SECRET` on the app. The app then uses its Builder connection. A `BUILDER_PRIVATE_KEY` on the worker is only for calling Builder directly, without the app.
 
 Stop the Fly machine while you do this (`fly machine stop <id>`). Otherwise Fly and the Mac can both claim jobs from the same table. The claim is safe (only one worker gets each job), but you would pay for Fly time you did not mean to use.
 

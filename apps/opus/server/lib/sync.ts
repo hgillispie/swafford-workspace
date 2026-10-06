@@ -134,18 +134,49 @@ export async function applyFinishedJobs(id: string): Promise<ProjectRow> {
   const renders = jobs.filter((job) => job.kind === "opus-render");
   for (const job of renders) {
     if (job.status === "succeeded" && job.result) {
-      const result = JSON.parse(job.result) as { outputKey?: string };
-      if (!result.outputKey) continue;
-      await db
-        .update(schema.clips)
-        .set({
-          status: "ready",
-          outputKey: result.outputKey,
-          error: null,
-        })
-        .where(
-          and(eq(schema.clips.projectId, id), eq(schema.clips.jobId, job.id)),
-        );
+      const result = JSON.parse(job.result) as {
+        outputKey?: string;
+        clips?: Array<{ clipId?: string; outputKey?: string; error?: string }>;
+      };
+      if (Array.isArray(result.clips) && result.clips.length > 0) {
+        for (const item of result.clips) {
+          if (!item.clipId) continue;
+          const failed = Boolean(item.error) || !item.outputKey;
+          await db
+            .update(schema.clips)
+            .set(
+              failed
+                ? {
+                    status: "failed",
+                    error: item.error || "Render failed.",
+                    outputKey: null,
+                  }
+                : {
+                    status: "ready",
+                    outputKey: item.outputKey,
+                    error: null,
+                  },
+            )
+            .where(
+              and(
+                eq(schema.clips.projectId, id),
+                eq(schema.clips.id, item.clipId),
+                eq(schema.clips.jobId, job.id),
+              ),
+            );
+        }
+      } else if (result.outputKey) {
+        await db
+          .update(schema.clips)
+          .set({
+            status: "ready",
+            outputKey: result.outputKey,
+            error: null,
+          })
+          .where(
+            and(eq(schema.clips.projectId, id), eq(schema.clips.jobId, job.id)),
+          );
+      }
     } else if (job.status === "failed") {
       await db
         .update(schema.clips)
@@ -196,29 +227,43 @@ export async function projectView(project: ProjectRow) {
       transcriptSource: project.transcriptSource,
       captionStyle: project.captionStyle,
       captionFont: project.captionFont,
+      captionPosition: project.captionPosition,
+      aspect: project.aspect,
+      hookOverlay: project.hookOverlay !== 0,
       youtubeUrl: project.youtubeUrl,
       mediaUrl,
       hasSource: Boolean(project.sourceKey),
     },
     words: parseWords(project.wordsJson),
     clips: clips
-      .sort((a, b) => a.startMs - b.startMs)
-      .map((clip) => ({
-        id: clip.id,
-        title: clip.title,
-        startMs: clip.startMs,
-        endMs: clip.endMs,
-        score: clip.score,
-        reason: clip.reason,
-        hook: clip.hook,
-        engagement: clip.engagement,
-        value: clip.valueScore,
-        shareability: clip.shareability,
-        source: clip.source,
-        status: clip.status,
-        error: clip.error,
-        downloadable: Boolean(clip.outputKey),
-      })),
+      .sort((a, b) => b.score - a.score || a.startMs - b.startMs)
+      .map((clip) => {
+        const job = jobs.find((item) => item.id === clip.jobId);
+        return {
+          id: clip.id,
+          title: clip.title,
+          startMs: clip.startMs,
+          endMs: clip.endMs,
+          score: clip.score,
+          reason: clip.reason,
+          hook: clip.hook,
+          engagement: clip.engagement,
+          value: clip.valueScore,
+          shareability: clip.shareability,
+          source: clip.source,
+          status: clip.status,
+          error: clip.error,
+          aspect: clip.aspect,
+          captionStyle: clip.captionStyle,
+          captionFont: clip.captionFont,
+          captionPosition: clip.captionPosition,
+          hookOverlay: clip.hookOverlay !== 0,
+          downloadable: Boolean(clip.outputKey),
+          progress: job?.progress ?? 0,
+          progressLabel: job?.progressLabel ?? null,
+          jobStatus: job?.status ?? null,
+        };
+      }),
     jobs: jobs.map(publicJob),
   };
 }

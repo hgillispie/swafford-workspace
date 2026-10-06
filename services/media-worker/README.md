@@ -12,7 +12,7 @@ Video bytes never go through the Netlify functions. The browser uses presigned P
 | `extract-audio` | 16 kHz mono MP3, split into chunks (default 10 minutes) |
 | `transcribe` | Word-level timestamps for those chunks |
 | `cutline-render` | Applies a transcript cut list to the **original**, with optional caption burn-in or a sidecar SRT |
-| `opus-render` | One 9:16 clip: face tracking, else motion, else center crop, plus animated captions |
+| `opus-render` | One or many clips from a single original download. Face tracking uses the 720p proxy. Captions, aspect, and an optional 3s hook title are per clip. |
 | `ingest-youtube` | Optional. Requires `yt-dlp` on `PATH` |
 
 Claiming uses `FOR UPDATE SKIP LOCKED`. Running jobs heartbeat every 15s. A job with no heartbeat for 90s is retried until `max_attempts` (3). Set `status = 'cancelled'` to stop a job at the next check.
@@ -31,8 +31,10 @@ All configuration is environment variables.
 | `B2_APPLICATION_KEY` | yes | Backblaze application key |
 | `B2_FORCE_PATH_STYLE` | no | `true` for MinIO. Leave unset for B2. |
 | `B2_SSE` | no | Default `AES256` (SSE-B2). Set `off` for MinIO. |
-| `TRANSCRIPTION_PROVIDER` | no | `builder` (default when a Builder key is present), `whisper`, `deepgram`, or `assemblyai` |
-| `BUILDER_PRIVATE_KEY` | for Builder ASR | Same Builder private key the workspace already uses for LLM credits |
+| `TRANSCRIPTION_PROVIDER` | no | `app` when `MEDIA_APP_TRANSCRIBE_URL` is set, otherwise `builder` when a Builder key is present, otherwise `whisper`. Also `deepgram` or `assemblyai`. |
+| `MEDIA_APP_TRANSCRIBE_URL` | production ASR | Opus callback, for example `https://<netlify-site>/opus/api/worker/transcribe`. The app calls Builder with the workspace connection. |
+| `MEDIA_WORKER_SECRET` | with the callback | Shared with the Netlify app. Sent as `Authorization: Bearer`. |
+| `BUILDER_PRIVATE_KEY` | only without the callback | Builder.io private key from account settings. Not needed on the worker when the callback URL is set. |
 | `DEEPGRAM_API_KEY` | for Deepgram | |
 | `ASSEMBLYAI_API_KEY` | for AssemblyAI | |
 | `WHISPER_MODEL` | no | faster-whisper model. Default `tiny`. `base` or `small` are more accurate and slower. |
@@ -48,7 +50,9 @@ All configuration is environment variables.
 | `FLY_REGION` | no | Default `iad`. |
 | `FLY_ROOTFS_GB` | no | Ephemeral root disk when the launcher creates a machine. Default `80`. |
 
-Transcription is behind `src/transcribe.ts`. Builder.io ASR is the production default and matches Cutline. Whisper runs locally with no API key. Deepgram and AssemblyAI are drop-in when their keys are set.
+Transcription is behind `src/transcribe.ts`. In production the worker posts each audio chunk to Opus (`MEDIA_APP_TRANSCRIBE_URL`) and the app calls Builder ASR with the Builder private key already connected on Netlify (Builder.io account settings, or the workspace vault). The worker does not get a second Builder key. Whisper is the local fallback when neither the callback nor a Builder key is configured. Deepgram and AssemblyAI remain optional.
+
+Netlify needs `MEDIA_WORKER_SECRET` (the same value as the worker) and the existing Builder connection. It does not need `MEDIA_APP_TRANSCRIBE_URL`. That URL is a worker secret pointing at `https://<site>/opus/api/worker/transcribe`.
 
 ## Run
 

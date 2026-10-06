@@ -17,9 +17,15 @@ export interface TranscriptChunk {
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+export interface TranscribeIdentity {
+  ownerEmail?: string;
+  orgId?: string | null;
+}
+
 export function providerName(): string {
   const explicit = process.env.TRANSCRIPTION_PROVIDER?.trim().toLowerCase();
   if (explicit) return explicit;
+  if (process.env.MEDIA_APP_TRANSCRIBE_URL?.trim()) return "app";
   if (process.env.BUILDER_PRIVATE_KEY?.trim() || process.env.BUILDER_API_KEY?.trim()) {
     return "builder";
   }
@@ -30,15 +36,18 @@ export async function transcribeFile(
   filePath: string,
   offsetMs: number,
   provider = providerName(),
+  identity: TranscribeIdentity = {},
 ): Promise<TranscriptChunk> {
   const chunk =
-    provider === "builder"
-      ? await transcribeBuilder(filePath)
-      : provider === "assemblyai"
-        ? await transcribeAssembly(filePath)
-        : provider === "deepgram"
-          ? await transcribeDeepgram(filePath)
-          : await transcribeWhisper(filePath);
+    provider === "app"
+      ? await transcribeViaApp(filePath, identity)
+      : provider === "builder"
+        ? await transcribeBuilder(filePath)
+        : provider === "assemblyai"
+          ? await transcribeAssembly(filePath)
+          : provider === "deepgram"
+            ? await transcribeDeepgram(filePath)
+            : await transcribeWhisper(filePath);
   return {
     language: chunk.language,
     words: chunk.words.map((word) => ({
@@ -47,6 +56,41 @@ export async function transcribeFile(
       endMs: word.endMs + offsetMs,
     })),
   };
+}
+
+async function transcribeViaApp(
+  filePath: string,
+  identity: TranscribeIdentity,
+): Promise<TranscriptChunk> {
+  const url = process.env.MEDIA_APP_TRANSCRIBE_URL?.trim();
+  const secret = process.env.MEDIA_WORKER_SECRET?.trim();
+  if (!url || !secret) {
+    throw new Error(
+      "MEDIA_APP_TRANSCRIBE_URL and MEDIA_WORKER_SECRET are required for app transcription.",
+    );
+  }
+  const bytes = await readFile(filePath);
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${secret}`,
+    "content-type": "audio/mpeg",
+    "content-length": String(bytes.byteLength),
+  };
+  if (identity.ownerEmail?.includes("@")) {
+    headers["x-opus-owner-email"] = identity.ownerEmail;
+  }
+  if (identity.orgId) headers["x-opus-org-id"] = identity.orgId;
+  const response = await fetch(url, { method: "POST", headers, body: bytes });
+  const payload = (await response.json().catch(() => ({}))) as {
+    words?: StampedWord[];
+    language?: string | null;
+    error?: string;
+  };
+  if (!response.ok) {
+    throw new Error(
+      payload.error || `App transcription failed (${response.status}).`,
+    );
+  }
+  return { words: payload.words ?? [], language: payload.language ?? null };
 }
 
 async function transcribeBuilder(filePath: string): Promise<TranscriptChunk> {

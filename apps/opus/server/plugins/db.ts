@@ -94,6 +94,18 @@ CREATE INDEX IF NOT EXISTS opus_clips_project_idx ON opus_clips (project_id, sta
       name: MEDIA_JOBS_MIGRATION_NAME,
       sql: MEDIA_JOBS_SQL,
     },
+    {
+      version: 3,
+      name: "opus-clip-look",
+      sql: `ALTER TABLE opus_projects ADD COLUMN IF NOT EXISTS caption_position TEXT NOT NULL DEFAULT 'bottom';
+ALTER TABLE opus_projects ADD COLUMN IF NOT EXISTS aspect TEXT NOT NULL DEFAULT '9:16';
+ALTER TABLE opus_projects ADD COLUMN IF NOT EXISTS hook_overlay INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE opus_clips ADD COLUMN IF NOT EXISTS aspect TEXT NOT NULL DEFAULT '9:16';
+ALTER TABLE opus_clips ADD COLUMN IF NOT EXISTS caption_style TEXT NOT NULL DEFAULT 'karaoke';
+ALTER TABLE opus_clips ADD COLUMN IF NOT EXISTS caption_font TEXT NOT NULL DEFAULT 'dejavu';
+ALTER TABLE opus_clips ADD COLUMN IF NOT EXISTS caption_position TEXT NOT NULL DEFAULT 'bottom';
+ALTER TABLE opus_clips ADD COLUMN IF NOT EXISTS hook_overlay INTEGER NOT NULL DEFAULT 1;`,
+    },
   ],
   { table: "opus_migrations" },
 );

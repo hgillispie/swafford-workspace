@@ -1,7 +1,6 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { dirname, extname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { extname, join } from "node:path";
 
 import {
   buildComposition,
@@ -14,7 +13,7 @@ import {
   uploadFile,
 } from "@swafford-workspace/object-storage";
 
-import { animatedAss, phraseAss, writeAss, type TimedWord } from "./captions.js";
+import { phraseAss, writeAss } from "./captions.js";
 import { enqueueJob, isCancelled, setProgress, type JobRow } from "./db.js";
 import {
   JobCancelled,
@@ -24,9 +23,8 @@ import {
   removeTemp,
   runFfmpeg,
 } from "./ffmpeg.js";
-import { transcribeFile } from "./transcribe.js";
-
-const here = dirname(fileURLToPath(import.meta.url));
+import { renderOpus } from "./opus-render.js";
+import { providerName, transcribeFile } from "./transcribe.js";
 
 async function throwIfCancelled(id: string): Promise<void> {
   if (await isCancelled(id)) throw new JobCancelled();
@@ -209,7 +207,7 @@ async function transcribe(
     throw new Error("Transcribe job has no audio chunks.");
   }
   const provider =
-    typeof payload.provider === "string" ? payload.provider : undefined;
+    typeof payload.provider === "string" ? payload.provider : providerName();
   const words: Array<{
     text: string;
     startMs: number;
@@ -237,11 +235,12 @@ async function transcribe(
         file,
         Number(record.offsetMs ?? 0),
         provider,
+        { ownerEmail: row.owner_email, orgId: row.org_id },
       );
       language = language ?? result.language ?? null;
       words.push(...result.words);
     }
-    return { words, language, provider: provider ?? "default" };
+    return { words, language, provider };
   } finally {
     await removeTemp(dir);
   }
@@ -420,198 +419,6 @@ async function renderSegments(input: {
 
 function escapeFilterPath(file: string): string {
   return file.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'");
-}
-
-async function renderOpus(
-  row: JobRow,
-  payload: Record<string, unknown>,
-): Promise<unknown> {
-  const sourceKey = stringField(payload, "sourceKey");
-  const outputKey = stringField(payload, "outputKey");
-  const startMs = Number(payload.startMs ?? 0);
-  const endMs = Number(payload.endMs ?? 0);
-  if (!(endMs > startMs)) throw new Error("Clip range is empty.");
-  const words = ((payload.words ?? []) as TimedWord[]).map((word) => ({
-    text: word.text,
-    startMs: Math.max(0, word.startMs - startMs),
-    endMs: Math.max(0, word.endMs - startMs),
-  }));
-  const style = typeof payload.captionStyle === "string" ? payload.captionStyle : "karaoke";
-  const font = typeof payload.font === "string" ? payload.font : "dejavu";
-  const title = typeof payload.title === "string" ? payload.title : "";
-  const dir = await makeTempDir("opus-");
-  try {
-    await setProgress(row.id, 8, "Preparing clip");
-    const source = await localObject(sourceKey, dir);
-    const clip = join(dir, "clip.mp4");
-    const start = (startMs / 1000).toFixed(3);
-    const end = (endMs / 1000).toFixed(3);
-    await runFfmpeg([
-      "-ss",
-      start,
-      "-to",
-      end,
-      "-i",
-      source,
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-crf",
-      "20",
-      "-c:a",
-      "aac",
-      "-pix_fmt",
-      "yuv420p",
-      clip,
-    ]);
-    await throwIfCancelled(row.id);
-    const track = await trackSubject(clip);
-    const probed = await probeMedia(clip);
-    const crop = cropFilter(track, probed.width ?? 1920, probed.height ?? 1080);
-    const ass = join(dir, "captions.ass");
-    await writeAss(
-      ass,
-      animatedAss({
-        words,
-        width: 1080,
-        height: 1920,
-        style,
-        font,
-        title,
-      }),
-    );
-    const output = join(dir, "vertical.mp4");
-    await setProgress(row.id, 40, "Reframing 9:16");
-    await runFfmpeg(
-      [
-        "-i",
-        clip,
-        "-vf",
-        `${crop},scale=1080:1920,ass=${escapeFilterPath(ass)}`,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "20",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "160k",
-        "-movflags",
-        "+faststart",
-        output,
-      ],
-      (chunk) => {
-        const progress = progressFromFfmpeg(chunk, endMs - startMs);
-        if (progress !== null) {
-          void setProgress(row.id, 40 + progress * 0.45, "Reframing 9:16");
-        }
-      },
-    );
-    await uploadFile({
-      key: outputKey,
-      filePath: output,
-      contentType: "video/mp4",
-    });
-    const rendered = await probeMedia(output);
-    return {
-      outputKey,
-      durationMs: rendered.durationMs,
-      width: rendered.width,
-      height: rendered.height,
-      crop: track.mode,
-      facesFound: track.facesFound,
-    };
-  } finally {
-    await removeTemp(dir);
-  }
-}
-
-async function trackSubject(file: string): Promise<{
-  mode: "face" | "motion" | "center";
-  facesFound: number;
-  samples: Array<{ t: number; cx: number; cy: number; kind: string }>;
-  width: number;
-  height: number;
-}> {
-  const script = join(here, "track_subject.py");
-  const raw = await new Promise<string>((resolve, reject) => {
-    const child = spawn("python3", [script, file], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code !== 0) reject(new Error(stderr || `tracker exited ${code}`));
-      else resolve(stdout);
-    });
-  }).catch(() => "");
-  if (!raw) {
-    return { mode: "center", facesFound: 0, samples: [], width: 0, height: 0 };
-  }
-  const parsed = JSON.parse(raw) as {
-    width: number;
-    height: number;
-    facesFound: number;
-    samples: Array<{ t: number; cx: number; cy: number; kind: string }>;
-  };
-  const mode = parsed.facesFound > 0 ? "face" : parsed.samples.some((sample) => sample.kind === "motion") ? "motion" : "center";
-  return { ...parsed, mode };
-}
-
-function cropFilter(
-  track: {
-    samples: Array<{ t: number; cx: number }>;
-    width: number;
-    height: number;
-    mode: string;
-  },
-  width: number,
-  height: number,
-): string {
-  const srcW = track.width || width;
-  const srcH = track.height || height;
-  let cropW = Math.round((srcH * 9) / 16);
-  let cropH = srcH;
-  if (cropW > srcW) {
-    cropW = srcW;
-    cropH = Math.round((srcW * 16) / 9);
-  }
-  cropW -= cropW % 2;
-  cropH -= cropH % 2;
-  const maxX = Math.max(0, srcW - cropW);
-  const y = Math.max(0, Math.round((srcH - cropH) / 2));
-  let xExpr = String(Math.round(maxX / 2));
-  if (track.mode !== "center" && track.samples.length > 0) {
-    let smoothed = track.samples[0].cx;
-    const points = track.samples.map((sample) => {
-      smoothed = smoothed * 0.65 + sample.cx * 0.35;
-      const x = Math.max(0, Math.min(maxX, Math.round(smoothed - cropW / 2)));
-      return { t: sample.t, x };
-    });
-    const reduced = points.filter(
-      (point, index) => index === 0 || Math.abs(point.x - points[index - 1].x) > 8,
-    );
-    xExpr = String(reduced[reduced.length - 1]?.x ?? Math.round(maxX / 2));
-    for (let index = reduced.length - 2; index >= 0; index -= 1) {
-      xExpr = `if(lt(t\\,${reduced[index + 1].t.toFixed(2)})\\,${reduced[index].x}\\,${xExpr})`;
-    }
-    if (xExpr.length > 6000) xExpr = String(Math.round(maxX / 2));
-  }
-  return `crop=${cropW}:${cropH}:${xExpr}:${y}`;
 }
 
 async function ingestYoutube(

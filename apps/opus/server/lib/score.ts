@@ -1,3 +1,4 @@
+import { snapToSentences } from "./sentences.js";
 import type { TranscriptWord } from "./words.js";
 
 export interface ScoredMoment {
@@ -56,10 +57,16 @@ export function scoreLocally(words: TranscriptWord[]): ScoredMoment[] {
     const notes = ["Local score"];
     if (questions > 0) notes.push(`${questions} question${questions === 1 ? "" : "s"}`);
     notes.push(`${pace.toFixed(1)} words/sec`);
+    const snapped = snapToSentences(
+      words,
+      slice[0].startMs,
+      slice[slice.length - 1].endMs,
+    );
+    if (snapped.endMs - snapped.startMs < 8_000) continue;
     candidates.push({
       title: title || "Moment",
-      startMs: slice[0].startMs,
-      endMs: slice[slice.length - 1].endMs,
+      startMs: snapped.startMs,
+      endMs: snapped.endMs,
       score,
       reason: notes.join(" · "),
       hook,

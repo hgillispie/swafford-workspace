@@ -29,6 +29,7 @@ export default defineAction({
           transcriptStatus: tables.projects.transcriptStatus,
           durationMs: tables.projects.durationMs,
           captionStyle: tables.projects.captionStyle,
+          aspect: tables.projects.aspect,
         })
         .from(tables.projects)
         .where(
@@ -50,6 +51,8 @@ export default defineAction({
             reason: tables.clips.reason,
             source: tables.clips.source,
             status: tables.clips.status,
+            aspect: tables.clips.aspect,
+            captionStyle: tables.clips.captionStyle,
           })
           .from(tables.clips)
           .where(eq(tables.clips.projectId, project.id))

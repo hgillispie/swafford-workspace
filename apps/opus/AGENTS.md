@@ -1,9 +1,10 @@
 # Opus — Agent Guide
 
 Opus turns a long video from the dumps bucket into scored vertical clips.
-The media worker proxies, transcribes, and renders 9:16 MP4s. Moment scoring
-goes through agent chat (`save-opus-moments`). `score-moments-locally` is an
-explicit offline fallback. See `DESIGN.md` for the Cutroom direction.
+The media worker proxies, transcribes, and renders captioned clips. Moment
+scoring goes through agent chat: page `list-moment-chunks`, rank globally,
+then `save-opus-moments` (sentence-snapped). `score-moments-locally` is the
+fallback and labels clips Local score. See `DESIGN.md` for the Cutroom direction.
 
 ## Skills
 
@@ -58,19 +59,21 @@ brand. Its `app.name` is used in transactional emails, and its optional
 
 ## Clip operations
 
-| Action                | Purpose                                                                                                     |
-| --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `list-clip-projects`  | List visible saved YouTube sources.                                                                         |
-| `create-clip-project` | Save a source with `title` and `sourceUrl`; return the id and `urlPath`.                                    |
-| `get-clip-project`    | Read a project and its saved moment markers by `id`.                                                        |
-| `update-clip-project` | Rename an accessible project by `id` and `title`.                                                           |
-| `create-clip-moment`  | Save a proposed range using `projectId`, `title`, integer `startSeconds`/`endSeconds`, and optional `note`. |
-| `delete-clip-moment`  | Remove a moment marker by `id`.                                                                             |
+| Action | Purpose |
+| --- | --- |
+| `list-opus-projects` | List projects the user can see. |
+| `sync-opus-project` | Read one project, its transcript, jobs, and clips. |
+| `list-moment-chunks` | Page the transcript in sentence chunks. Read every page before ranking. |
+| `save-opus-moments` | Store the agent's global shortlist. Snaps ranges to sentences. |
+| `score-moments-locally` | Deterministic fallback. Labels clips Local score. |
+| `update-opus-clip` | Trim, aspect, caption style, font, position, or hook overlay. |
+| `set-opus-captions` | Defaults copied onto clips saved after the change. |
+| `render-opus-clip` | One worker job. One clip, or every saved clip, from one original download. |
+| `open-opus-clip` / `open-opus-clips` | Presign one ready clip, or every ready clip. |
 
-A saved source or moment is not a processed clip. There is no download,
-transcription, scoring, rendering, or export pipeline yet. Never claim those
-steps succeeded or fabricate a clip preview. Project records are private by
-default and can be shared with the standard share control.
+A clip is not rendered until `render-opus-clip` succeeds. Do not invent scores,
+quotes, or download links. Agent moments are labeled Agent. Local fallback
+moments are labeled Local score.
 
 - `provider-api-request` calls Slack through the shared workspace connection.
   Use `provider: "slack"` and an exact Web API path such as `/auth.test`.

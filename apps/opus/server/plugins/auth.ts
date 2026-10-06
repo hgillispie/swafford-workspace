@@ -1,9 +1,8 @@
-import { defaultAuthPlugin as frameworkDefault } from "@agent-native/core/server";
-import * as workspaceServer from "@swafford-workspace/shared/server";
+import { createAuthPlugin } from "@agent-native/core/server";
 
-const workspacePlugin = (workspaceServer as Record<string, unknown>)
-  .defaultAuthPlugin;
-
-export default typeof workspacePlugin === "function"
-  ? workspacePlugin
-  : frameworkDefault;
+export default createAuthPlugin({
+  publicPaths: [
+    "/api/worker/transcribe",
+    "/opus/api/worker/transcribe",
+  ],
+});

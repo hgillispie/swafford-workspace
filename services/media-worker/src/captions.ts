@@ -86,6 +86,20 @@ function styleFor(name: string, portrait: boolean): Style {
   };
 }
 
+function placeStyle(
+  style: Style,
+  position: string | undefined,
+  portrait: boolean,
+): Style {
+  if (position === "top") {
+    return { ...style, alignment: 8, marginV: portrait ? 120 : 36 };
+  }
+  if (position === "middle" || position === "center") {
+    return { ...style, alignment: 5, marginV: 0 };
+  }
+  return style;
+}
+
 function header(width: number, height: number, style: Style, font: string): string {
   return `[Script Info]
 ScriptType: v4.00+
@@ -111,16 +125,18 @@ export function animatedAss(input: {
   height: number;
   style: string;
   font?: string;
+  position?: string;
   title?: string;
   titleMs?: number;
 }): string {
   const portrait = input.height > input.width;
-  const look = styleFor(input.style, portrait);
+  const look = placeStyle(styleFor(input.style, portrait), input.position, portrait);
   const font = fontName(input.font);
   let body = header(input.width, input.height, look, font);
   if (input.title) {
-    const end = Math.max(800, input.titleMs ?? 2800);
-    body += `Dialogue: 1,${assTime(0)},${assTime(end)},Title,,0,0,0,,${escapeAss(input.title)}\n`;
+    const end = Math.max(800, input.titleMs ?? 3000);
+    const hookAn = look.alignment === 8 ? "\\an2" : "\\an8";
+    body += `Dialogue: 1,${assTime(0)},${assTime(end)},Title,,0,0,0,,{${hookAn}}${escapeAss(input.title)}\n`;
   }
   const groups: TimedWord[][] = [];
   let current: TimedWord[] = [];

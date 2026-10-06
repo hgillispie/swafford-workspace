@@ -4,6 +4,8 @@ import { z } from "zod";
 
 import { getDb, schema } from "../server/db.js";
 import { editProject, nowIso, requireUserEmail } from "../server/lib/access.js";
+import { clipLook } from "../server/lib/clip-look.js";
+import { snapToSentences } from "../server/lib/sentences.js";
 import { parseWords } from "../server/lib/words.js";
 
 const moment = z.object({
@@ -20,10 +22,10 @@ const moment = z.object({
 
 export default defineAction({
   description:
-    "Save scored moments chosen by the agent. Replaces earlier agent moments that have not been rendered.",
+    "Save the agent's global shortlist. Snaps each range to sentence boundaries and replaces earlier agent moments that have not been rendered.",
   schema: z.object({
     id: z.string().min(1).describe("Project id"),
-    moments: z.array(moment).min(1).max(8),
+    moments: z.array(moment).min(1).max(12),
   }),
   run: async ({ id, moments }) => {
     const ownerEmail = requireUserEmail();
@@ -39,7 +41,12 @@ export default defineAction({
       project.durationMs,
       words[words.length - 1]?.endMs ?? 0,
     );
-    for (const item of moments) {
+    const look = clipLook(project);
+    const snapped = moments.map((item) => {
+      const range = snapToSentences(words, item.startMs, item.endMs);
+      return { ...item, startMs: range.startMs, endMs: range.endMs };
+    });
+    for (const item of snapped) {
       if (item.endMs <= item.startMs || item.endMs > duration + 1500) {
         fail(`"${item.title}" is outside the transcript.`, {
           statusCode: 400,
@@ -55,7 +62,7 @@ export default defineAction({
       );
     const now = nowIso();
     await db.insert(schema.clips).values(
-      moments.map((item) => ({
+      snapped.map((item) => ({
         id: crypto.randomUUID(),
         projectId: id,
         title: item.title,
@@ -67,6 +74,7 @@ export default defineAction({
         engagement: item.engagement,
         valueScore: item.value,
         shareability: item.shareability,
+        ...look,
         source: "agent",
         status: "draft",
         ownerEmail,
@@ -74,6 +82,6 @@ export default defineAction({
         createdAt: now,
       })),
     );
-    return { saved: moments.length };
+    return { saved: snapped.length, scorer: "agent" as const, moments: snapped };
   },
 });
