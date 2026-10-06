@@ -1,0 +1,28 @@
+{
+  "name": "@swafford-workspace/media-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared media job contract and transcript cut composition.",
+  "type": "module",
+  "files": ["dist", "src"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./launch": {
+      "types": "./dist/launch.d.ts",
+      "development": "./src/launch.ts",
+      "default": "./dist/launch.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepare": "tsc"
+  },
+  "devDependencies": {
+    "typescript-7": "catalog:"
+  }
+}

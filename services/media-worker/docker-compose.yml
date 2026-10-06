@@ -1,0 +1,15 @@
+# Local worker against whatever .env.local points at (prod Neon and B2, or MinIO).
+# The process exits after the queue has been empty for MEDIA_WORKER_IDLE_MINUTES.
+# Compose does not restart it.
+
+services:
+  media-worker:
+    build:
+      context: ../..
+      dockerfile: services/media-worker/Dockerfile
+    env_file:
+      - .env.local
+    environment:
+      WORKER_LAUNCHER: local
+      MEDIA_WORKDIR: /tmp/media-worker
+    restart: "no"

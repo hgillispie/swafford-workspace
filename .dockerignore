@@ -1,0 +1,10 @@
+.git
+node_modules
+**/node_modules
+.pnpm-store
+**/.turbo
+**/dist
+**/*.mp4
+**/*.mov
+uploads
+.cursor

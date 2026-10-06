@@ -1,0 +1,26 @@
+{
+  "name": "media-worker",
+  "private": true,
+  "description": "Host-agnostic ffmpeg worker for Cutline and Opus.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "node --env-file-if-exists=.env.local --import tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-native/core": "0.201.0-nightly-20261005153421",
+    "@swafford-workspace/media-core": "workspace:*",
+    "@swafford-workspace/object-storage": "workspace:*",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "tsx": "catalog:",
+    "typescript-7": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.22.0"
+  }
+}
