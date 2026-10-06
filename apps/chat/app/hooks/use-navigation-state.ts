@@ -1,6 +1,10 @@
-import { appBasePath, appPath } from "@agent-native/core/client/api-path";
+import { appBasePath } from "@agent-native/core/client/api-path";
 import { useAgentRouteState } from "@agent-native/core/client/navigation";
 
+import {
+  browserPathFromRouterPath,
+  routerPathFromCommand,
+} from "@/lib/chat-mount-path";
 import { TAB_ID } from "@/lib/tab-id";
 
 export interface NavigationState {
@@ -17,12 +21,15 @@ export function useNavigationState() {
       const threadId = threadIdFromPath(pathname);
       return {
         view: viewForPath(pathname),
-        path: appPath(pathname),
+        path: browserPathFromRouterPath(pathname, appBasePath()),
         ...(threadId ? { threadId } : {}),
       };
     },
     getCommandPath: (command) =>
-      routerPath(command.path || pathForCommand(command)),
+      routerPathFromCommand(
+        command.path || pathForCommand(command),
+        appBasePath(),
+      ),
   });
 }
 
@@ -79,16 +86,6 @@ function pathForCommand(command: any): string {
   const threadId =
     typeof command?.threadId === "string" ? command.threadId.trim() : "";
   return threadId ? `/chat/${encodeURIComponent(threadId)}` : path;
-}
-
-function routerPath(path: string): string {
-  const basePath = appBasePath();
-  if (!basePath) return path;
-  if (path === basePath) return "/";
-  if (path.startsWith(`${basePath}/`)) {
-    return path.slice(basePath.length) || "/";
-  }
-  return path;
 }
 
 function isChatPath(pathname: string): boolean {
