@@ -3,17 +3,26 @@ import { installRouteChunkRecovery } from "@agent-native/core/client/route-chunk
 import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
 
+import { legacyMountedChatThreadRedirect } from "@/lib/chat-mount-path";
+
 installRouteChunkRecovery();
 
 const basePath = appBasePath();
 const pathname = window.location.pathname;
-const routerBasePath =
-  basePath && (pathname === basePath || pathname.startsWith(`${basePath}/`))
-    ? basePath
-    : "";
-const context = (
-  window as Window & { __reactRouterContext?: { basename?: string } }
-).__reactRouterContext;
-if (context) context.basename = routerBasePath;
+const legacyThread = legacyMountedChatThreadRedirect(pathname, basePath);
+if (legacyThread) {
+  window.location.replace(
+    `${legacyThread}${window.location.search}${window.location.hash}`,
+  );
+} else {
+  const routerBasePath =
+    basePath && (pathname === basePath || pathname.startsWith(`${basePath}/`))
+      ? basePath
+      : "";
+  const context = (
+    window as Window & { __reactRouterContext?: { basename?: string } }
+  ).__reactRouterContext;
+  if (context) context.basename = routerBasePath;
 
-hydrateRoot(document, <HydratedRouter />);
+  hydrateRoot(document, <HydratedRouter />);
+}

@@ -31,7 +31,8 @@
   "packageManager": "pnpm@10.29.1",
   "pnpm": {
     "patchedDependencies": {
-      "@agent-native/core@0.201.0-nightly-20261005153421": "patches/@agent-native__core@0.201.0-nightly-20261005153421.patch"
+      "@agent-native/core@0.201.0-nightly-20261005153421": "patches/@agent-native__core@0.201.0-nightly-20261005153421.patch",
+      "@agent-native/dispatch@0.40.12-nightly-20261005153421": "patches/@agent-native__dispatch@0.40.12-nightly-20261005153421.patch"
     }
   },
   "agent-native": {

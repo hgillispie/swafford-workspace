@@ -139,6 +139,12 @@ Git-connected Netlify builds need a plan that can deploy this private repo.
 Until then, run the build where the env vars are exported and publish with
 `netlify deploy --prod --dir dist --functions .netlify/functions-internal`.
 
+The "Powered by Netlify" badge is injected by Netlify for public projects. It
+is not a framework setting and `netlify.toml` cannot turn it off. In the
+Netlify UI open **Project configuration → General → Powered by Netlify badge**,
+turn it off, and save. The change applies on the next request; no redeploy is
+required. Docs: <https://docs.netlify.com/manage/projects/powered-by-netlify-badge/>.
+
 ## Adding a new app
 
 ```bash

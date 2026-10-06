@@ -1,0 +1,74 @@
+--- a/src/lib/workspace-apps.ts
++++ b/src/lib/workspace-apps.ts
+@@ -164,9 +164,19 @@
+ }
+ 
+ export function isWorkspaceAppVisibleInDefaultLaunchers(
+-  app: Pick<WorkspaceAppSummary, "id" | "isDispatch">,
++  app: Pick<WorkspaceAppSummary, "id" | "isDispatch"> &
++    Partial<Pick<WorkspaceAppSummary, "path" | "url">>,
+ ): boolean {
+-  return !app.isDispatch && !isDefaultWorkspaceAppHiddenId(app.id);
++  if (app.isDispatch || isDispatchWorkspaceAppId(app.id)) return false;
++  // Hide the hosted chat starter (https://chat.agent-native.com). A
++  // path-mounted workspace app named chat is a real product and stays listed.
++  if (
++    app.id.trim().toLowerCase() === "chat" &&
++    !isPathMountedWorkspaceApp(app)
++  ) {
++    return false;
++  }
++  return true;
+ }
+ 
+ const DEFAULT_WORKSPACE_APP_DESCRIPTIONS: Record<
+--- a/src/lib/workspace-apps.spec.ts
++++ b/src/lib/workspace-apps.spec.ts
+@@ -280,6 +280,20 @@
+     expect(isWorkspaceAppVisibleInDefaultLaunchers({ id: "chat" })).toBe(false);
+     expect(
+       isWorkspaceAppVisibleInDefaultLaunchers({
++        id: "chat",
++        path: "/chat",
++        url: "https://workspace.example.com/chat",
++      }),
++    ).toBe(true);
++    expect(
++      isWorkspaceAppVisibleInDefaultLaunchers({
++        id: "chat",
++        path: "/",
++        url: "https://chat.agent-native.com",
++      }),
++    ).toBe(false);
++    expect(
++      isWorkspaceAppVisibleInDefaultLaunchers({
+         id: "dispatch",
+         isDispatch: true,
+       }),
+--- a/dist/lib/workspace-apps.js
++++ b/dist/lib/workspace-apps.js
+@@ -91,7 +91,12 @@
+     return normalized === "chat" || isDispatchWorkspaceAppId(normalized);
+ }
+ export function isWorkspaceAppVisibleInDefaultLaunchers(app) {
+-    return !app.isDispatch && !isDefaultWorkspaceAppHiddenId(app.id);
++    if (app.isDispatch || isDispatchWorkspaceAppId(app.id))
++        return false;
++    // Hide the hosted chat starter. A path-mounted workspace app named chat stays listed.
++    if (app.id.trim().toLowerCase() === "chat" && !isPathMountedWorkspaceApp(app))
++        return false;
++    return true;
+ }
+ const DEFAULT_WORKSPACE_APP_DESCRIPTIONS = {
+     calendar: {
+--- a/dist/lib/workspace-apps.d.ts
++++ b/dist/lib/workspace-apps.d.ts
+@@ -42,7 +42,7 @@
+ }): boolean;
+ export declare function isPathMountedWorkspaceApp(app: WorkspaceAppHrefSource): boolean;
+ export declare function isDefaultWorkspaceAppHiddenId(appId: string): boolean;
+-export declare function isWorkspaceAppVisibleInDefaultLaunchers(app: Pick<WorkspaceAppSummary, "id" | "isDispatch">): boolean;
++export declare function isWorkspaceAppVisibleInDefaultLaunchers(app: Pick<WorkspaceAppSummary, "id" | "isDispatch"> & Partial<Pick<WorkspaceAppSummary, "path" | "url">>): boolean;
+ export declare function workspaceAppRoute(appId: string): string;
+ export declare function workspaceAppRouteForChildPath(app: Pick<WorkspaceAppSummary, "id" | "path" | "url">, childPath: string): string | null;
+ export declare function workspaceAppInitialPathFromSplat(routeSplat: string | undefined, search: string, hash: string): string | undefined;

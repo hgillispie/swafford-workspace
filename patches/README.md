@@ -5,6 +5,15 @@ the root `package.json` `pnpm.patchedDependencies`, and must be described here.
 
 ## Current
 
+`@agent-native/dispatch@0.40.12-nightly-20261005153421` patches
+`isWorkspaceAppVisibleInDefaultLaunchers` in `src/lib/workspace-apps.ts` and
+the published `dist/lib/workspace-apps.js`:
+
+- Dispatch's apps list and app rail hide every app whose id is `chat`, which
+  was meant to drop the hosted starter at `https://chat.agent-native.com`.
+  This workspace has a real mounted app at `/chat`. The filter still hides
+  Dispatch and the hosted starter, and it lists a path-mounted `chat` app.
+
 `@agent-native/core@0.201.0-nightly-20261005153421` patches `dist/deploy/build.js`:
 
 - Keep only glibc linux-x64 native packages when pruning serverless bundles:

@@ -1,9 +1,10 @@
-import { appPath } from "@agent-native/core/client/api-path";
+import { appBasePath } from "@agent-native/core/client/api-path";
 import { markAgentChatHomeHandoff } from "@agent-native/toolkit/app/chat/agentkit-chat/rail";
 import { useEffect, useRef, useState } from "react";
 
 import { APP_TITLE } from "@/lib/app-config";
 import { getChatHomeThreadId } from "@/lib/chat-home-thread";
+import { browserPathFromRouterPath } from "@/lib/chat-mount-path";
 
 const SEO_TITLE = APP_TITLE;
 const SEO_DESCRIPTION =
@@ -33,7 +34,12 @@ export default function ChatRoute() {
     handoffStartedRef.current = true;
     markAgentChatHomeHandoff("chat");
     try {
-      window.location.replace(appPath(`/chat/${encodeURIComponent(threadId)}`));
+      window.location.replace(
+        browserPathFromRouterPath(
+          `/chat/${encodeURIComponent(threadId)}`,
+          appBasePath(),
+        ),
+      );
     } catch (error) {
       handoffStartedRef.current = false;
       throw error;
