@@ -18,7 +18,10 @@ export default defineAction({
   run: async ({ id, partNumbers }) => {
     const { orgId } = requireActor();
     const file = await loadFile(id, orgId);
-    if (file.status !== "uploading" || !file.uploadId) {
+    if (
+      (file.status !== "uploading" && file.status !== "failed") ||
+      !file.uploadId
+    ) {
       fail("This file is not waiting for parts.", {
         statusCode: 409,
         errorCode: "upload_not_open",

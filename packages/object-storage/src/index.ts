@@ -2,8 +2,8 @@ import { createReadStream, createWriteStream } from "node:fs";
 import { readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 import {
   AbortMultipartUploadCommand,
@@ -34,11 +34,8 @@ export const B2_ENV_KEYS = [
 export type B2EnvKey = (typeof B2_ENV_KEYS)[number];
 
 const DOWNLOAD_SECONDS = 15 * 60;
-const PART_URL_SECONDS = 60 * 60;
-const MIN_PART_SIZE = 8 * 1024 * 1024;
-const MAX_PART_SIZE = 32 * 1024 * 1024;
-const TARGET_PARTS = 128;
-const MAX_PARTS = 10_000;
+/** Large parts on a slow link, plus retries, can outlive a one-hour URL. */
+const PART_URL_SECONDS = 6 * 60 * 60;
 
 const PUBLIC_BUCKET = {
   endpoint: "https://s3.us-east-005.backblazeb2.com",
@@ -137,9 +134,7 @@ function workspaceFileEnv(): Partial<Record<B2EnvKey, string>> {
 function readSettings(): { missing: B2EnvKey[]; settings: B2Settings | null } {
   const file = workspaceFileEnv();
   const endpoint =
-    envValue("B2_S3_ENDPOINT") ||
-    file.B2_S3_ENDPOINT ||
-    PUBLIC_BUCKET.endpoint;
+    envValue("B2_S3_ENDPOINT") || file.B2_S3_ENDPOINT || PUBLIC_BUCKET.endpoint;
   const region =
     envValue("B2_REGION") || file.B2_REGION || PUBLIC_BUCKET.region;
   const bucket =
@@ -218,25 +213,7 @@ export function objectKey(
   return `org/${orgId}/files/${fileId}/${safeBasename(filename)}`;
 }
 
-export function planParts(sizeBytes: number): {
-  partSize: number;
-  partCount: number;
-} {
-  const size = Math.max(0, Math.floor(sizeBytes));
-  if (size === 0) return { partSize: MIN_PART_SIZE, partCount: 1 };
-  let partSize = MIN_PART_SIZE;
-  if (size > MIN_PART_SIZE * TARGET_PARTS) {
-    partSize = Math.ceil(size / TARGET_PARTS / MIN_PART_SIZE) * MIN_PART_SIZE;
-  }
-  if (partSize > MAX_PART_SIZE) partSize = MAX_PART_SIZE;
-  if (size > partSize * MAX_PARTS) partSize = Math.ceil(size / MAX_PARTS);
-  return { partSize, partCount: Math.ceil(size / partSize) };
-}
-
-export function partCountFor(sizeBytes: number, partSize: number): number {
-  if (sizeBytes <= 0) return 1;
-  return Math.max(1, Math.ceil(sizeBytes / partSize));
-}
+export { isMissingMultipartUpload, partCountFor, planParts } from "./parts.js";
 
 export function contentTypeForName(filename: string): string {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
@@ -300,7 +277,9 @@ export async function ensureBucketCors(force = false): Promise<{
   }
 }
 
-function encryption(): { ServerSideEncryption: "AES256" } | Record<string, never> {
+function encryption():
+  | { ServerSideEncryption: "AES256" }
+  | Record<string, never> {
   return sseMode() === "AES256" ? { ServerSideEncryption: "AES256" } : {};
 }
 
@@ -369,13 +348,15 @@ export async function listUploadedParts(input: {
   const client = clientFor(settings);
   const parts: Array<{ partNumber: number; etag: string }> = [];
   let marker: string | undefined;
-  do {
+  const seenMarkers = new Set<string>();
+  for (;;) {
     const page = await client.send(
       new ListPartsCommand({
         Bucket: settings.bucket,
         Key: input.key,
         UploadId: input.uploadId,
         PartNumberMarker: marker,
+        MaxParts: 1000,
       }),
     );
     for (const part of page.Parts ?? []) {
@@ -383,8 +364,11 @@ export async function listUploadedParts(input: {
         parts.push({ partNumber: part.PartNumber, etag: part.ETag });
       }
     }
-    marker = page.IsTruncated ? page.NextPartNumberMarker : undefined;
-  } while (marker);
+    const next = page.IsTruncated ? page.NextPartNumberMarker : undefined;
+    if (!next || seenMarkers.has(next)) break;
+    seenMarkers.add(next);
+    marker = next;
+  }
   return parts;
 }
 
@@ -494,16 +478,15 @@ export async function presignGet(input: {
 }): Promise<{ url: string; expiresInSeconds: number }> {
   const settings = requireSettings();
   const filename = safeBasename(input.filename).replace(/"/g, "");
-  const disposition = input.disposition === "attachment" ? "attachment" : "inline";
+  const disposition =
+    input.disposition === "attachment" ? "attachment" : "inline";
   const url = await getSignedUrl(
     clientFor(settings),
     new GetObjectCommand({
       Bucket: settings.bucket,
       Key: input.key,
       ResponseContentDisposition: `${disposition}; filename="${filename}"`,
-      ...(input.contentType
-        ? { ResponseContentType: input.contentType }
-        : {}),
+      ...(input.contentType ? { ResponseContentType: input.contentType } : {}),
     }),
     { expiresIn: DOWNLOAD_SECONDS },
   );

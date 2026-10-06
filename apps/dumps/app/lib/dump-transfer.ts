@@ -1,4 +1,7 @@
-import { callAction } from "@agent-native/core/client/hooks";
+import {
+  actionErrorMessage,
+  callAction,
+} from "@agent-native/core/client/hooks";
 
 type StartedUpload = {
   id: string;
@@ -97,6 +100,106 @@ export function filesFromInput(list: FileList | null): DumpTransferFile[] {
   }));
 }
 
+/** Six matches the browser's per-host connection cap, so parts are not queued behind each other. */
+export const PART_CONCURRENCY = 6;
+const SIGN_BATCH = 20;
+const PART_ATTEMPTS = 4;
+
+export function coerceByteCount(value: unknown, label: string): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(
+      `The upload record has an unreadable ${label}. Abort it and start again.`,
+    );
+  }
+  return Math.floor(parsed);
+}
+
+export function partByteRange(
+  partNumber: number,
+  partSize: number,
+  fileSize: number,
+): { offset: number; size: number } {
+  const offset = (partNumber - 1) * partSize;
+  if (!Number.isFinite(offset) || offset < 0) {
+    throw new Error(`Could not place part ${partNumber}.`);
+  }
+  const size = fileSize <= offset ? 0 : Math.min(partSize, fileSize - offset);
+  return { offset, size };
+}
+
+export function missingPartNumbers(
+  partCount: number,
+  done: { has(partNumber: number): boolean },
+): number[] {
+  const missing: number[] = [];
+  for (let partNumber = 1; partNumber <= partCount; partNumber += 1) {
+    if (!done.has(partNumber)) missing.push(partNumber);
+  }
+  return missing;
+}
+
+export function normalizeStoredParts(
+  parts: Array<{ partNumber: unknown; etag: unknown }>,
+): Map<number, string> {
+  const done = new Map<number, string>();
+  for (const part of parts) {
+    const partNumber = Number(part.partNumber);
+    const etag = typeof part.etag === "string" ? part.etag.trim() : "";
+    if (!Number.isInteger(partNumber) || partNumber < 1 || !etag) continue;
+    done.set(partNumber, etag);
+  }
+  return done;
+}
+
+export function transferErrorMessage(error: unknown, fallback: string): string {
+  const authored = actionErrorMessage(error);
+  if (authored?.trim()) return authored.trim();
+  if (!(error instanceof Error)) return fallback;
+  const message = error.message.trim();
+  if (!message) return fallback;
+  const failed = message.match(/^Action [\w-]+ failed: (.+)$/);
+  if (failed?.[1]) return failed[1];
+  const timedOut = message.match(/^Action [\w-]+ timed out after (\d+)s$/);
+  if (timedOut) {
+    return `The server timed out after ${timedOut[1]}s. Resume to continue.`;
+  }
+  if (message.startsWith("Action ")) return fallback;
+  return message;
+}
+
+export function shouldRetryPartStatus(
+  status: number,
+  attempt: number,
+): boolean {
+  if (attempt >= PART_ATTEMPTS) return false;
+  if (status === 0 || status === 408 || status === 429) return true;
+  return status >= 500;
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("errorCode" in error)) {
+    return undefined;
+  }
+  const code = (error as { errorCode?: unknown }).errorCode;
+  return typeof code === "string" ? code : undefined;
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(new Error("Upload cancelled."));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error("Upload cancelled."));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 async function mapPool<T>(
   items: T[],
   limit: number,
@@ -116,27 +219,124 @@ async function mapPool<T>(
   await Promise.all(workers);
 }
 
+export function partUploadError(
+  status: number,
+  body: string,
+  missingEtag: boolean,
+): string {
+  if (missingEtag && status >= 200 && status < 300) {
+    return "Backblaze did not expose the part ETag. Allow the site origin for PUT and expose ETag on the bucket.";
+  }
+  if (status === 0) {
+    return "The browser could not reach Backblaze for this part. Resume to continue.";
+  }
+  const detail = body.replace(/\s+/g, " ").trim().slice(0, 180);
+  return detail
+    ? `Part upload failed (${status}). ${detail}`
+    : `Part upload failed (${status}).`;
+}
+
+function putPartOnce(
+  url: string,
+  body: Blob,
+  signal: AbortSignal,
+  onBytes: (loaded: number) => void,
+): Promise<string> {
+  if (typeof XMLHttpRequest === "undefined") {
+    return fetch(url, { method: "PUT", body, signal }).then(
+      async (response) => {
+        const etag = response.headers.get("etag");
+        if (response.ok && etag) {
+          onBytes(body.size);
+          return etag;
+        }
+        const text = await response.text().catch(() => "");
+        throw Object.assign(
+          new Error(
+            partUploadError(response.status, text, response.ok && !etag),
+          ),
+          {
+            status: response.status,
+          },
+        );
+      },
+    );
+  }
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.responseType = "text";
+    xhr.withCredentials = false;
+    const onAbort = () => xhr.abort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onBytes(event.loaded);
+    };
+    xhr.onload = () => {
+      signal.removeEventListener("abort", onAbort);
+      const etag = xhr.getResponseHeader("ETag");
+      if (xhr.status >= 200 && xhr.status < 300 && etag) {
+        onBytes(body.size);
+        resolve(etag);
+        return;
+      }
+      const error = new Error(
+        partUploadError(
+          xhr.status,
+          xhr.responseText ?? "",
+          xhr.status >= 200 && xhr.status < 300 && !etag,
+        ),
+      );
+      Object.assign(error, { status: xhr.status });
+      reject(error);
+    };
+    xhr.onerror = () => {
+      signal.removeEventListener("abort", onAbort);
+      const error = new Error(partUploadError(0, "", false));
+      Object.assign(error, { status: 0 });
+      reject(error);
+    };
+    xhr.onabort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(new Error("Upload cancelled."));
+    };
+    xhr.send(body);
+  });
+}
+
 async function putPart(
   url: string,
   body: Blob,
   signal: AbortSignal,
+  onBytes: (loaded: number) => void,
 ): Promise<string> {
-  let lastError = "Upload part failed.";
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  let lastError = new Error("Upload part failed.");
+  for (let attempt = 1; attempt <= PART_ATTEMPTS; attempt += 1) {
     if (signal.aborted) throw new Error("Upload cancelled.");
     try {
-      const response = await fetch(url, { method: "PUT", body, signal });
-      const etag = response.headers.get("etag");
-      if (response.ok && etag) return etag;
-      lastError = response.ok
-        ? "Backblaze did not expose the part ETag. Allow the site origin for PUT and expose ETag on the bucket."
-        : `Part upload failed (${response.status}).`;
+      return await putPartOnce(url, body, signal, onBytes);
     } catch (error) {
-      if (signal.aborted) throw new Error("Upload cancelled.");
-      lastError = error instanceof Error ? error.message : lastError;
+      if (
+        signal.aborted ||
+        (error instanceof Error && error.message === "Upload cancelled.")
+      ) {
+        throw new Error("Upload cancelled.");
+      }
+      lastError = error instanceof Error ? error : lastError;
+      const status =
+        error && typeof error === "object" && "status" in error
+          ? Number((error as { status?: unknown }).status)
+          : 0;
+      if (
+        !shouldRetryPartStatus(Number.isFinite(status) ? status : 0, attempt)
+      ) {
+        throw lastError;
+      }
+      onBytes(0);
+      await sleep(Math.min(8_000, 400 * 2 ** (attempt - 1)), signal);
     }
   }
-  throw new Error(lastError);
+  throw lastError;
 }
 
 type OpenUpload = {
@@ -144,23 +344,64 @@ type OpenUpload = {
   partSize: number;
   partCount: number;
   parts: Array<{ partNumber: number; etag: string }>;
+  sizeBytes: number;
+  filename: string;
+  restarted?: boolean;
+  message?: string;
 };
 
-async function sendParts(input: {
+function slicePart(
+  file: Blob,
+  partNumber: number,
+  partSize: number,
+  partCount: number,
+): Blob {
+  const range = partByteRange(partNumber, partSize, file.size);
+  const isLast = partNumber === partCount;
+  if (
+    range.offset > file.size ||
+    (range.size === 0 && file.size > 0) ||
+    (!isLast && range.size !== partSize)
+  ) {
+    throw new Error(
+      `Could not read part ${partNumber} (${range.size} bytes at offset ${range.offset}). The browser did not return the expected slice of this file.`,
+    );
+  }
+  const blob = file.slice(range.offset, range.offset + range.size);
+  if (blob.size !== range.size) {
+    throw new Error(
+      `Could not read part ${partNumber} (${blob.size} of ${range.size} bytes). The browser did not return the expected slice of this file.`,
+    );
+  }
+  return blob;
+}
+
+export async function runMultipartUpload(input: {
   id: string;
-  file: File;
+  file: Blob;
   partSize: number;
   partCount: number;
   done: Map<number, string>;
   signal: AbortSignal;
   onProgress: (loaded: number) => void;
+  sign?: (partNumbers: number[]) => Promise<SignedParts["parts"]>;
+  put?: (
+    url: string,
+    body: Blob,
+    signal: AbortSignal,
+    onBytes: (loaded: number) => void,
+  ) => Promise<string>;
+  complete?: (
+    parts: Array<{ partNumber: number; etag: string }>,
+  ) => Promise<void>;
 }) {
+  const partSize = coerceByteCount(input.partSize, "part size");
+  const partCount = coerceByteCount(input.partCount, "part count");
   const loaded = new Map<number, number>();
   for (const [partNumber] of input.done) {
-    const offset = (partNumber - 1) * input.partSize;
     loaded.set(
       partNumber,
-      Math.min(input.partSize, Math.max(0, input.file.size - offset)),
+      partByteRange(partNumber, partSize, input.file.size).size,
     );
   }
   const report = () => {
@@ -169,30 +410,56 @@ async function sendParts(input: {
     input.onProgress(total);
   };
   report();
-  const missing: number[] = [];
-  for (let partNumber = 1; partNumber <= input.partCount; partNumber += 1) {
-    if (!input.done.has(partNumber)) missing.push(partNumber);
-  }
-  for (let start = 0; start < missing.length; start += 20) {
-    const partNumbers = missing.slice(start, start + 20);
-    const signed = (await callAction("sign-dump-parts", {
-      id: input.id,
-      partNumbers,
-    })) as SignedParts;
-    await mapPool(signed.parts, 4, async (part) => {
-      const offset = (part.partNumber - 1) * input.partSize;
-      const blob = input.file.slice(offset, offset + input.partSize);
-      const etag = await putPart(part.url, blob, input.signal);
-      input.done.set(part.partNumber, etag);
-      loaded.set(part.partNumber, blob.size);
+  const missing = missingPartNumbers(partCount, input.done);
+  const sign =
+    input.sign ??
+    (async (partNumbers: number[]) => {
+      const signed = (await callAction("sign-dump-parts", {
+        id: input.id,
+        partNumbers,
+      })) as SignedParts;
+      if (!Array.isArray(signed.parts) || signed.parts.length === 0) {
+        throw new Error("Backblaze did not return part upload URLs.");
+      }
+      return signed.parts;
+    });
+  const put = input.put ?? putPart;
+  const complete =
+    input.complete ??
+    (async (parts: Array<{ partNumber: number; etag: string }>) => {
+      await callAction("complete-dump-upload", { id: input.id, parts });
+    });
+  for (let start = 0; start < missing.length; start += SIGN_BATCH) {
+    const partNumbers = missing.slice(start, start + SIGN_BATCH);
+    const signed = await sign(partNumbers);
+    await mapPool(signed, PART_CONCURRENCY, async (part) => {
+      if (!part.url)
+        throw new Error("Backblaze did not return a part upload URL.");
+      const partNumber = coerceByteCount(part.partNumber, "part number");
+      const blob = slicePart(input.file, partNumber, partSize, partCount);
+      const etag = await put(part.url, blob, input.signal, (bytes) => {
+        loaded.set(partNumber, Math.min(blob.size, Math.max(0, bytes)));
+        report();
+      });
+      if (!etag.trim()) {
+        throw new Error(
+          "Backblaze did not expose the part ETag. Allow the site origin for PUT and expose ETag on the bucket.",
+        );
+      }
+      input.done.set(partNumber, etag.trim());
+      loaded.set(partNumber, blob.size);
       report();
     });
   }
-  const parts = [...input.done.entries()].map(([partNumber, etag]) => ({
-    partNumber,
-    etag,
-  }));
-  await callAction("complete-dump-upload", { id: input.id, parts });
+  if (input.done.size !== partCount) {
+    throw new Error(
+      `Uploaded ${input.done.size} of ${partCount} parts. Resume to continue.`,
+    );
+  }
+  const parts = [...input.done.entries()]
+    .map(([partNumber, etag]) => ({ partNumber, etag }))
+    .sort((a, b) => a.partNumber - b.partNumber);
+  await complete(parts);
 }
 
 export async function uploadDumpFile(input: {
@@ -208,7 +475,7 @@ export async function uploadDumpFile(input: {
     folderId: input.folderId,
   });
   const upload = started as StartedUpload;
-  await sendParts({
+  await runMultipartUpload({
     id: upload.id,
     file: input.file,
     partSize: upload.partSize,
@@ -223,29 +490,47 @@ export async function uploadDumpFile(input: {
   };
 }
 
+async function loadOpenUpload(id: string): Promise<OpenUpload> {
+  try {
+    return (await callAction(
+      "list-dump-parts",
+      { id },
+      { method: "GET" },
+    )) as OpenUpload;
+  } catch (error) {
+    if (errorCode(error) !== "upload_session_missing") throw error;
+    return (await callAction("restart-dump-upload", { id })) as OpenUpload;
+  }
+}
+
 export async function resumeDumpFile(input: {
   id: string;
   file: File;
   signal: AbortSignal;
   onProgress: (loaded: number) => void;
-}): Promise<void> {
-  const open = (await callAction(
-    "list-dump-parts",
-    { id: input.id },
-    { method: "GET" },
-  )) as OpenUpload & { sizeBytes: number; filename: string };
-  if (input.file.size !== open.sizeBytes) {
-    throw new Error("Choose the same file. The size does not match this upload.");
+}): Promise<{ message?: string }> {
+  const open = await loadOpenUpload(input.id);
+  const sizeBytes = coerceByteCount(open.sizeBytes, "file size");
+  if (input.file.size !== sizeBytes) {
+    throw new Error(
+      `Choose the same file. This upload is ${sizeBytes} bytes and the selected file is ${input.file.size} bytes.`,
+    );
   }
-  await sendParts({
+  if (open.filename && input.file.name !== open.filename) {
+    throw new Error(
+      `Choose ${open.filename}. The selected file is named ${input.file.name}.`,
+    );
+  }
+  await runMultipartUpload({
     id: input.id,
     file: input.file,
     partSize: open.partSize,
     partCount: open.partCount,
-    done: new Map(open.parts.map((part) => [part.partNumber, part.etag])),
+    done: normalizeStoredParts(open.parts ?? []),
     signal: input.signal,
     onProgress: input.onProgress,
   });
+  return open.restarted && open.message ? { message: open.message } : {};
 }
 
 export async function ensureDumpFolders(
