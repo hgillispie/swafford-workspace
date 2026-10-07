@@ -53,7 +53,8 @@
         "dumps",
         "cutline",
         "opus",
-        "pulse"
+        "pulse",
+        "scout"
       ]
     }
   }
