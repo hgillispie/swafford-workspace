@@ -71,6 +71,7 @@ import {
 
 const REGION = "US";
 const SOUND_NOTE = "Observed on the fetched videos. Not a live music chart.";
+const MAX_WATCH_SEEDS = 8;
 const RATE_LIMIT_MESSAGE = "data provider rate-limited";
 
 function absorbProviderError(error: unknown, warnings: string[]): "stop" | "miss" | "throw" {
@@ -267,6 +268,12 @@ export async function fetchCompetitor(
     });
   } catch (error) {
     if (isActionContractError(error) && error.errorCode === "not_found") {
+      await rememberIntelligenceMisses(actor.orgId, [
+        {
+          handle,
+          displayName: input.displayName ?? seed?.displayName ?? handle,
+        },
+      ]);
       fail(`No public TikTok record for @${handle}.`, {
         statusCode: 404,
         errorCode: "not_found",
@@ -427,7 +434,9 @@ export async function intelligenceReport(actor: Actor) {
       })
       .map((row) => row.handle),
   );
-  const pending = brand.watchlist.filter((seed) => !freshHandles.has(seed.handle)).slice(0, 4);
+  const pending = brand.watchlist
+    .filter((seed) => !freshHandles.has(seed.handle))
+    .slice(0, MAX_WATCH_SEEDS);
   const warnings = [discovered.warning].filter((item): item is string => Boolean(item));
   const missed: { handle: string; displayName: string }[] = [];
   if (!discovered.halted) {
@@ -458,7 +467,8 @@ export async function intelligenceReport(actor: Actor) {
     watchlist: board.watchlist,
     pulse: board.pulse,
     missedHandles: missed,
-    creditNote: "Refresh spends credits only for stale seed searches, the trending feed, and up to four watchlist profiles. A missing public record is skipped.",
+    creditNote:
+      "Refresh spends credits only for stale seed searches, the trending feed, and up to eight unfetched watchlist profiles. A missing public record is skipped.",
   };
   const id = await insertReport(actor, {
     kind: "intelligence",
@@ -474,8 +484,6 @@ export async function intelligenceReport(actor: Actor) {
     nextRequiredAction: "scout-save-report",
   };
 }
-
-const MAX_WATCH_SEEDS = 8;
 
 export async function watchAllSeeds(actor: Actor) {
   const brand = await readBrand(actor.orgId);

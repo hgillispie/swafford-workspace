@@ -11,6 +11,7 @@ Read `scout-guardrails` before recreates, audits, or brand copy. Framework skill
 - Home is the niche pulse: breakouts, trend terms, watchlist, filters.
 - A cold Niche pulse (key set, every watchlist row unfetched) auto-runs `scout-intelligence-report` once, then waits 30 minutes. It does not re-fire after rows are fetched or marked missing.
 - A ScrapeCreators not-found on one handle is a skip. The rest of the pulse still saves. `warning` names the handles. Do not tell the user to link TikTok or Instagram.
+- A single Watch shows “Watching…” on that row, then refreshes the list. The error stays on the row when the fetch fails.
 - Instagram and Shorts stay stubs. TikTok search does not need account linking.
 - Keywords, competitors, trends, audit, timing, create, and recreates are the working routes.
 - Actions stay deterministic. Rewrite, audit narrative, and the pulse brief go through the AgentSidebar with high effort and the strongest configured model. Do not call `generateText` or `streamText`. Do not default to mini, flash, or haiku.

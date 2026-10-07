@@ -169,7 +169,7 @@ export function IntelligenceScreen() {
         onDyno={setDyno}
       />
       <ErrorNote error={refresh.error ?? board.error} />
-      {cold ? <FirstRunNote pending={refresh.isPending} /> : null}
+      {untouched ? <FirstRunNote pending={refresh.isPending} /> : null}
       {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
       {board.isPending || seeding ? (
         <RowsSkeleton />
@@ -408,7 +408,21 @@ function WatchList({
 }) {
   const fetchOne = useActionMutation("scout-fetch-competitor");
   const watchAll = useActionMutation("scout-watch-seeds");
+  const [activeHandle, setActiveHandle] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ handle: string; message: string } | null>(null);
   const pending = rows.some((row) => !row.fetched && !row.missed);
+  const watchBusy = busy || fetchOne.isPending || watchAll.isPending || activeHandle != null;
+  function finishWatch(handle: string, error?: unknown) {
+    setActiveHandle((current) => (current === handle ? null : current));
+    if (error) {
+      const message = actionMessage(error) ?? "Watch failed.";
+      setRowError({ handle, message });
+      toast.error(message);
+    } else {
+      setRowError((current) => (current?.handle === handle ? null : current));
+    }
+    onFetched();
+  }
   return (
     <div className="grid gap-2">
       {pending ? (
@@ -417,8 +431,9 @@ function WatchList({
             type="button"
             size="sm"
             variant="outline"
-            disabled={busy || fetchOne.isPending || watchAll.isPending}
-            onClick={() =>
+            disabled={watchBusy}
+            onClick={() => {
+              setRowError(null);
               watchAll.mutate(
                 {},
                 {
@@ -428,52 +443,69 @@ function WatchList({
                     if (payload.warning) toast(payload.warning);
                     else if (payload.message) toast.success(payload.message);
                   },
-                  onError: (error) => toast.error(actionMessage(error)),
+                  onError: (error) => {
+                    const message = actionMessage(error) ?? "Watch failed.";
+                    toast.error(message);
+                    onFetched();
+                  },
                 },
-              )
-            }
+              );
+            }}
           >
             <PendingIcon pending={watchAll.isPending} />
-            Watch all seeds
+            {watchAll.isPending ? "Watching seeds…" : "Watch all seeds"}
           </Button>
         </div>
       ) : null}
-      {rows.map((row) => (
-        <Panel key={row.handle}>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium">{row.displayName}</p>
-              <p className="text-xs text-muted-foreground">
-                @{row.handle} · {row.role.replace(/_/g, " ")}
-                {row.fetched
-                  ? ` · ${formatCount(row.followers)} followers`
-                  : row.missed
-                    ? " · no public record"
-                    : " · not fetched"}
-                {row.outlierCount > 0 ? ` · ${row.outlierCount} breakouts` : ""}
-              </p>
+      {rows.map((row) => {
+        const watching = activeHandle === row.handle;
+        const message = rowError?.handle === row.handle ? rowError.message : null;
+        return (
+          <Panel key={row.handle}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">{row.displayName}</p>
+                <p className="text-xs text-muted-foreground">
+                  @{row.handle} · {row.role.replace(/_/g, " ")}
+                  {watching
+                    ? " · watching…"
+                    : row.fetched
+                      ? ` · ${formatCount(row.followers)} followers`
+                      : row.missed
+                        ? " · no public record"
+                        : " · not fetched"}
+                  {row.outlierCount > 0 ? ` · ${row.outlierCount} breakouts` : ""}
+                </p>
+                {message && !watching ? <p className="mt-1 text-xs text-destructive">{message}</p> : null}
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant={row.fetched ? "outline" : "default"}
+                disabled={watchBusy}
+                onClick={() => {
+                  setActiveHandle(row.handle);
+                  setRowError(null);
+                  fetchOne.mutate(
+                    {
+                      handle: row.handle,
+                      role: row.role as "north_star" | "local" | "watch",
+                      displayName: row.displayName,
+                    },
+                    {
+                      onSuccess: () => finishWatch(row.handle),
+                      onError: (error) => finishWatch(row.handle, error),
+                    },
+                  );
+                }}
+              >
+                <PendingIcon pending={watching} />
+                {watching ? "Watching…" : row.fetched ? "Refresh" : "Watch"}
+              </Button>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant={row.fetched ? "outline" : "default"}
-              disabled={busy || fetchOne.isPending || watchAll.isPending}
-              onClick={() =>
-                fetchOne.mutate(
-                  { handle: row.handle, role: row.role as "north_star" | "local" | "watch", displayName: row.displayName },
-                  {
-                    onSuccess: onFetched,
-                    onError: (error) => toast.error(actionMessage(error)),
-                  },
-                )
-              }
-            >
-              <PendingIcon pending={fetchOne.isPending} />
-              {row.fetched ? "Refresh" : "Watch"}
-            </Button>
-          </div>
-        </Panel>
-      ))}
+          </Panel>
+        );
+      })}
     </div>
   );
 }
