@@ -134,6 +134,7 @@ export function IntelligenceScreen() {
   }, [board, data, refresh]);
   const seeding = cold && (refresh.isPending || board.isFetching);
   const notice = noticeText(data, refresh.data);
+  const untouched = (data?.watchlist.length ?? 0) > 0 && (data?.watchlist ?? []).every((row) => !row.fetched && !row.missed);
   return (
     <ScoutPage
       title="Niche pulse"
@@ -184,8 +185,8 @@ export function IntelligenceScreen() {
               </Link>
             </Panel>
           ) : null}
-          <BreakoutList videos={data?.breakouts ?? []} cold={cold} />
-          <TermList terms={data?.terms ?? []} cold={cold} />
+          <BreakoutList videos={data?.breakouts ?? []} untouched={untouched} />
+          <TermList terms={data?.terms ?? []} untouched={untouched} />
           <WatchList
             rows={data?.watchlist ?? []}
             busy={refresh.isPending}
@@ -292,13 +293,13 @@ function Select<T extends string>({
   );
 }
 
-function BreakoutList({ videos, cold = false }: { videos: VideoHit[]; cold?: boolean }) {
+function BreakoutList({ videos, untouched = false }: { videos: VideoHit[]; untouched?: boolean }) {
   return (
     <div className="grid gap-2">
       {videos.length === 0 ? (
         <Panel>
           <p className="text-sm">
-            {cold ? "Breakouts land here after Refresh pulse." : "No breakouts in this filter."}
+            {untouched ? "Breakouts land here after Refresh pulse." : "No breakouts in this filter."}
           </p>
         </Panel>
       ) : (
@@ -355,14 +356,16 @@ function VideoRow({ video }: { video: VideoHit }) {
   );
 }
 
-function TermList({ terms, cold = false }: { terms: TermRow[]; cold?: boolean }) {
+function TermList({ terms, untouched = false }: { terms: TermRow[]; untouched?: boolean }) {
   if (terms.length === 0) {
     return (
       <Panel>
         <p className="text-sm">
-          {cold ? "Trending terms land here after Refresh pulse." : "Trending terms land after Discover."}
+          {untouched
+            ? "Trending terms land here after Refresh pulse."
+            : "Trending terms land after Discover."}
         </p>
-        {cold ? null : (
+        {untouched ? null : (
           <Link to="/trends" className="text-sm text-primary underline">
             Discover trends
           </Link>
