@@ -44,6 +44,33 @@ export function partCountFor(sizeBytes: number, partSize: number): number {
   return Math.max(1, Math.ceil(sizeBytes / partSize));
 }
 
+/**
+ * Presigned UploadPart URLs must not carry a checksum query parameter.
+ * The AWS SDK's default flexible checksum signs `x-amz-checksum-crc32=AAAAAA==`
+ * (the checksum of an empty body). A browser PUT of the real part cannot
+ * satisfy it, and Backblaze resets the connection while the body is still
+ * uploading. The browser then reports status 0 because the error response
+ * has no Access-Control-Allow-Origin.
+ */
+export function browserPartUrlProblem(url: string): string | null {
+  let params: URLSearchParams;
+  try {
+    params = new URL(url).searchParams;
+  } catch {
+    return "Part URL is not a valid URL.";
+  }
+  for (const key of params.keys()) {
+    const name = key.toLowerCase();
+    if (
+      name.startsWith("x-amz-checksum-") ||
+      name === "x-amz-sdk-checksum-algorithm"
+    ) {
+      return "Part URL includes a checksum the browser cannot send. Backblaze closes the connection while the part is uploading.";
+    }
+  }
+  return null;
+}
+
 export function isMissingMultipartUpload(err: unknown): boolean {
   const name =
     err && typeof err === "object" && "name" in err

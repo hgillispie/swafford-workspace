@@ -35,20 +35,22 @@ are the fallback for the three non-secret names.
 The browser asks Dumps to start a multipart upload, receives presigned part
 URLs, and PUTs the bytes to B2. Part size starts at 8 MiB and grows with the
 file, capped at 32 MiB, so a file stays under 10,000 parts. A 16 GiB file is
-512 parts. Three parts run at once, and two smaller files can be in flight
-together.
+512 parts. Files under 1 GiB send three parts at once. A larger file sends
+one part at a time, and two smaller files can be in flight together.
 
-32 MiB is the cap because 128 MiB parts with six uploads at once did not
-finish. Each PUT reset after a few megabytes. Six of those resets are the
-9–15 MB the progress bar showed, and the bar jumped backward because a retry
-cleared that part's in-flight bytes. Backblaze error responses omit
-`Access-Control-Allow-Origin`, so the browser cannot read the HTTP status
-and the row says the connection closed. Parts that did land stay stored.
-Resume sends only the missing part numbers, asks for a fresh URL after a
-connection reset, and does not move the progress total backward. An open
-upload with no stored parts and a part size above 32 MiB is aborted and
-started again in 32 MiB parts. An upload that already has stored parts keeps
-its part size.
+The part PUT is the file slice itself, with no Content-Type header. The
+presign signs only `host` and `UNSIGNED-PAYLOAD`. Checksum query parameters
+are left off: `x-amz-checksum-crc32=AAAAAA==` is the checksum of an empty
+body, and Backblaze resets the connection while a real part is uploading.
+The browser then has no response to read. Error responses also omit
+`Access-Control-Allow-Origin`, so a rejected PUT looks the same as a reset.
+After either one, the client asks which parts are already stored and
+continues from the missing numbers. A fresh URL is used for the next try.
+Progress does not move backward. An open upload with no stored parts and a
+part size above 32 MiB is aborted and started again in 32 MiB parts. An
+upload that already has stored parts keeps its part size. No bucket CORS
+change is required for this. The existing `workspaceUploads` rule already
+allows the site origin to PUT and exposes `ETag`.
 
 A failed upload stays open. Choose the same file from its row to resume.
 Already stored parts are skipped. If Backblaze no longer has that upload

@@ -101,15 +101,22 @@ export function filesFromInput(list: FileList | null): DumpTransferFile[] {
 }
 
 /**
- * Three parts in flight, each at most 32 MiB. Six 128 MiB PUTs at once reset
- * after a few megabytes each; the summed progress then jumped between about
- * 5 MB and 15 MB as every retry cleared that part's in-flight bytes.
+ * Small files keep three parts in flight. A multi-gigabyte file sends one
+ * part at a time: three parallel PUTs to the B2 S3 host reset before a
+ * response, and the summed in-flight bytes are the ~28 MB a 13 GB row shows.
  * Must match `BROWSER_MAX_PART_BYTES` in `packages/object-storage`.
  */
 export const BROWSER_MAX_PART_BYTES = 32 * 1024 * 1024;
 export const PART_CONCURRENCY = 3;
+export const SERIAL_UPLOAD_BYTES = 1024 * 1024 * 1024;
 const SIGN_BATCH = 8;
 const PART_ATTEMPTS = 5;
+const PART_TIMEOUT_MS = 10 * 60 * 1000;
+
+export function partConcurrencyFor(fileSize: number): number {
+  if (fileSize >= SERIAL_UPLOAD_BYTES) return 1;
+  return PART_CONCURRENCY;
+}
 
 export function coerceByteCount(value: unknown, label: string): number {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -242,6 +249,17 @@ export function partUploadError(
     : `Part upload failed (${status}).`;
 }
 
+function partResultError(
+  status: number,
+  body: string,
+  missingEtag: boolean,
+): Error {
+  return Object.assign(new Error(partUploadError(status, body, missingEtag)), {
+    status,
+    missingEtag,
+  });
+}
+
 function putPartOnce(
   url: string,
   body: Blob,
@@ -249,7 +267,13 @@ function putPartOnce(
   onBytes: (loaded: number) => void,
 ): Promise<string> {
   if (typeof XMLHttpRequest === "undefined") {
-    return fetch(url, { method: "PUT", body, signal })
+    return fetch(url, {
+      method: "PUT",
+      body,
+      signal,
+      credentials: "omit",
+      mode: "cors",
+    })
       .then(async (response) => {
         const etag = response.headers.get("etag");
         if (response.ok && etag) {
@@ -257,14 +281,7 @@ function putPartOnce(
           return etag;
         }
         const text = await response.text().catch(() => "");
-        throw Object.assign(
-          new Error(
-            partUploadError(response.status, text, response.ok && !etag),
-          ),
-          {
-            status: response.status,
-          },
-        );
+        throw partResultError(response.status, text, response.ok && !etag);
       })
       .catch((error: unknown) => {
         if (error && typeof error === "object" && "status" in error) {
@@ -276,9 +293,7 @@ function putPartOnce(
         ) {
           throw new Error("Upload cancelled.");
         }
-        throw Object.assign(new Error(partUploadError(0, "", false)), {
-          status: 0,
-        });
+        throw partResultError(0, "", false);
       });
   }
   return new Promise((resolve, reject) => {
@@ -286,39 +301,39 @@ function putPartOnce(
     xhr.open("PUT", url);
     xhr.responseType = "text";
     xhr.withCredentials = false;
+    xhr.timeout = PART_TIMEOUT_MS;
     const onAbort = () => xhr.abort();
     signal.addEventListener("abort", onAbort, { once: true });
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onBytes(event.loaded);
     };
-    xhr.onload = () => {
+    const finish = (error?: Error) => {
       signal.removeEventListener("abort", onAbort);
+      if (error) reject(error);
+    };
+    xhr.onload = () => {
       const etag = xhr.getResponseHeader("ETag");
+      const missingEtag = xhr.status >= 200 && xhr.status < 300 && !etag;
       if (xhr.status >= 200 && xhr.status < 300 && etag) {
         onBytes(body.size);
+        signal.removeEventListener("abort", onAbort);
         resolve(etag);
         return;
       }
-      const error = new Error(
-        partUploadError(
-          xhr.status,
-          xhr.responseText ?? "",
-          xhr.status >= 200 && xhr.status < 300 && !etag,
-        ),
-      );
-      Object.assign(error, { status: xhr.status });
-      reject(error);
+      finish(partResultError(xhr.status, xhr.responseText ?? "", missingEtag));
     };
     xhr.onerror = () => {
-      signal.removeEventListener("abort", onAbort);
-      const error = new Error(partUploadError(0, "", false));
-      Object.assign(error, { status: 0 });
-      reject(error);
+      finish(partResultError(0, "", false));
+    };
+    xhr.ontimeout = () => {
+      finish(partResultError(0, "", false));
     };
     xhr.onabort = () => {
       signal.removeEventListener("abort", onAbort);
       reject(new Error("Upload cancelled."));
     };
+    // Send the slice itself. Do not set Content-Type: the presign only signs
+    // `host`, and a typed blob makes the browser add Content-Type.
     xhr.send(body);
   });
 }
@@ -329,17 +344,21 @@ function partStatus(error: unknown): number {
   return Number.isFinite(status) ? status : 0;
 }
 
-async function independentPart(slice: Blob): Promise<Blob> {
-  if (slice.size === 0 || typeof slice.arrayBuffer !== "function") return slice;
-  // Copy the slice so the PUT is not a live read of a multi-gigabyte File.
-  // If that copy fails, send the original slice.
-  try {
-    const buffer = await slice.arrayBuffer();
-    if (buffer.byteLength !== slice.size) return slice;
-    return new Blob([buffer], { type: "application/octet-stream" });
-  } catch {
-    return slice;
-  }
+function hasMissingEtag(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "missingEtag" in error &&
+    (error as { missingEtag?: unknown }).missingEtag === true,
+  );
+}
+
+function isUnreadablePartResult(error: unknown): boolean {
+  return partStatus(error) === 0 || hasMissingEtag(error);
+}
+
+export function partRetryDelayMs(attempt: number): number {
+  return Math.min(20_000, 1000 * 2 ** (attempt - 1));
 }
 
 async function putPart(
@@ -348,6 +367,7 @@ async function putPart(
   signal: AbortSignal,
   onBytes: (loaded: number) => void,
   refreshUrl?: () => Promise<string>,
+  adoptStored?: () => Promise<string | null>,
 ): Promise<string> {
   let currentUrl = url;
   let lastError = new Error("Upload part failed.");
@@ -363,9 +383,19 @@ async function putPart(
         throw new Error("Upload cancelled.");
       }
       lastError = error instanceof Error ? error : lastError;
+      // A reset, or a 200 whose ETag the browser could not read, often means
+      // Backblaze already stored the part and omitted CORS on the response.
+      if (isUnreadablePartResult(error) && adoptStored) {
+        try {
+          const etag = (await adoptStored())?.trim();
+          if (etag) return etag;
+        } catch {
+          // Listing parts is best-effort. The next attempt still runs.
+        }
+      }
       const status = partStatus(error);
       if (!shouldRetryPartStatus(status, attempt)) throw lastError;
-      if (status === 0 && refreshUrl) {
+      if (refreshUrl) {
         try {
           const fresh = await refreshUrl();
           if (fresh) currentUrl = fresh;
@@ -375,7 +405,7 @@ async function putPart(
       }
       // Leave the last progress value in place. Zeroing it makes the bar
       // jump backward while the other in-flight parts are still sending.
-      await sleep(Math.min(10_000, 750 * 2 ** (attempt - 1)), signal);
+      await sleep(partRetryDelayMs(attempt), signal);
     }
   }
   throw lastError;
@@ -409,7 +439,10 @@ function slicePart(
       `Could not read part ${partNumber} (${range.size} bytes at offset ${range.offset}). The browser did not return the expected slice of this file.`,
     );
   }
-  const blob = file.slice(range.offset, range.offset + range.size);
+  // The third argument clears the blob type. An inherited video/mp4 or an
+  // explicit application/octet-stream makes the browser send Content-Type,
+  // which this presign does not cover.
+  const blob = file.slice(range.offset, range.offset + range.size, "");
   if (blob.size !== range.size) {
     throw new Error(
       `Could not read part ${partNumber} (${blob.size} of ${range.size} bytes). The browser did not return the expected slice of this file.`,
@@ -433,6 +466,7 @@ export async function runMultipartUpload(input: {
     signal: AbortSignal,
     onBytes: (loaded: number) => void,
     refreshUrl?: () => Promise<string>,
+    adoptStored?: () => Promise<string | null>,
   ) => Promise<string>;
   complete?: (
     parts: Array<{ partNumber: number; etag: string }>,
@@ -479,27 +513,61 @@ export async function runMultipartUpload(input: {
       signed[0];
     return match?.url || fallback;
   };
+  const lookupStoredPart = async (partNumber: number) => {
+    // List twice. Backblaze can commit the part before the browser sees the
+    // response, and the first list can still miss it.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const open = (await callAction(
+          "list-dump-parts",
+          { id: input.id },
+          { method: "GET" },
+        )) as OpenUpload;
+        if (!open || !Array.isArray(open.parts)) return null;
+        const etag = normalizeStoredParts(open.parts).get(partNumber) ?? null;
+        if (etag || attempt === 1) return etag;
+      } catch {
+        return null;
+      }
+      await sleep(400, input.signal);
+    }
+    return null;
+  };
   const sendPart = async (part: { partNumber: number; url: string }) => {
     if (!part.url) {
       throw new Error("Backblaze did not return a part upload URL.");
     }
     const partNumber = coerceByteCount(part.partNumber, "part number");
-    const blob = await independentPart(
-      slicePart(input.file, partNumber, partSize, partCount),
-    );
-    const etag = await put(
-      part.url,
-      blob,
-      input.signal,
-      (bytes) => {
-        const next = Math.min(blob.size, Math.max(0, bytes));
-        // Keep this part's best progress. A retry starts again at zero, and
-        // writing that zero used to pull the whole bar backward.
-        loaded.set(partNumber, Math.max(loaded.get(partNumber) ?? 0, next));
-        report();
-      },
-      () => refreshPart(partNumber, part.url),
-    );
+    const blob = slicePart(input.file, partNumber, partSize, partCount);
+    let etag: string;
+    try {
+      etag = await put(
+        part.url,
+        blob,
+        input.signal,
+        (bytes) => {
+          const next = Math.min(blob.size, Math.max(0, bytes));
+          // Keep this part's best progress. A retry starts again at zero, and
+          // writing that zero used to pull the whole bar backward.
+          loaded.set(partNumber, Math.max(loaded.get(partNumber) ?? 0, next));
+          report();
+        },
+        () => refreshPart(partNumber, part.url),
+        () => lookupStoredPart(partNumber),
+      );
+    } catch (error) {
+      if (
+        input.signal.aborted ||
+        (error instanceof Error && error.message === "Upload cancelled.")
+      ) {
+        throw new Error("Upload cancelled.");
+      }
+      const recovered = isUnreadablePartResult(error)
+        ? await lookupStoredPart(partNumber)
+        : null;
+      if (!recovered) throw error;
+      etag = recovered;
+    }
     if (!etag.trim()) {
       throw new Error(
         "Backblaze did not expose the part ETag. Allow the site origin for PUT and expose ETag on the bucket.",
@@ -513,16 +581,11 @@ export async function runMultipartUpload(input: {
     const partNumbers = missing.slice(start, start + SIGN_BATCH);
     const signed = await sign(partNumbers);
     const dropped: Array<{ partNumber: number; url: string }> = [];
-    await mapPool(signed, PART_CONCURRENCY, async (part) => {
+    await mapPool(signed, partConcurrencyFor(input.file.size), async (part) => {
       try {
         await sendPart(part);
       } catch (error) {
-        if (
-          error &&
-          typeof error === "object" &&
-          "status" in error &&
-          partStatus(error) === 0
-        ) {
+        if (isUnreadablePartResult(error)) {
           dropped.push(part);
           return;
         }

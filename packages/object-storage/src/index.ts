@@ -23,6 +23,8 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+import { browserPartUrlProblem } from "./parts.js";
+
 export const B2_ENV_KEYS = [
   "B2_S3_ENDPOINT",
   "B2_REGION",
@@ -189,6 +191,8 @@ function clientFor(settings: B2Settings): S3Client {
       accessKeyId: settings.keyId,
       secretAccessKey: settings.applicationKey,
     },
+    // WHEN_REQUIRED keeps UploadPart presigns free of x-amz-checksum-crc32.
+    // The SDK default signs the empty-body checksum and Backblaze resets the PUT.
     requestChecksumCalculation: "WHEN_REQUIRED",
     responseChecksumValidation: "WHEN_REQUIRED",
   });
@@ -215,6 +219,7 @@ export function objectKey(
 
 export {
   BROWSER_MAX_PART_BYTES,
+  browserPartUrlProblem,
   isMissingMultipartUpload,
   partCountFor,
   planParts,
@@ -340,6 +345,8 @@ export async function signParts(input: {
         }),
         { expiresIn: PART_URL_SECONDS },
       );
+      const problem = browserPartUrlProblem(url);
+      if (problem) throw new Error(problem);
       return { partNumber, url };
     }),
   );
