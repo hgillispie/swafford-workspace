@@ -1,11 +1,17 @@
 import { sendToAgentChat } from "@agent-native/core/client/agent-chat";
 import { actionErrorMessage, useActionMutation, useActionQuery } from "@agent-native/core/client/hooks";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+import {
+  PULSE_SEED_STORAGE_KEY,
+  pulseNeedsLiveSeed,
+  pulseSeedAllowed,
+} from "@shared/board";
 
 import {
   ErrorNote,
@@ -40,6 +46,7 @@ interface WatchRow {
   displayName: string;
   role: string;
   fetched: boolean;
+  missed?: boolean;
   followers: number | null;
   outlierCount: number;
 }
@@ -83,6 +90,7 @@ interface Board {
   audits: { id: string; handle: string; narrative: string | null }[];
   pulse: { headline: string; mattBlurb: string; reportDate: string } | null;
   intelligence: { id: string; narrative: string | null } | null;
+  missedWarning?: string | null;
   seeds: { term: string; intent: string; searchVsTrend: string; volumeProxy: string }[];
   brand: { firstHourReply: string; dynoUnlocked: boolean };
 }
@@ -103,6 +111,30 @@ export function IntelligenceScreen() {
   const board = useBoard(filters);
   const refresh = useActionMutation("scout-intelligence-report");
   const data = board.data as Board | undefined;
+  const seeded = useRef(false);
+  const cold = data ? pulseNeedsLiveSeed(data) : false;
+  useEffect(() => {
+    if (!data || refresh.isPending || seeded.current || !pulseNeedsLiveSeed(data)) return;
+    const now = Date.now();
+    if (!pulseSeedAllowed(readPulseSeedAt(), now)) return;
+    seeded.current = true;
+    writePulseSeedAt(now);
+    refresh.mutate(
+      {},
+      {
+        onSuccess: () => {
+          void board.refetch();
+        },
+        onError: (error) => {
+          toast.error(actionMessage(error));
+          void board.refetch();
+        },
+      },
+    );
+  }, [board, data, refresh]);
+  const seeding = cold && (refresh.isPending || board.isFetching);
+  const notice = noticeText(data, refresh.data);
+  const untouched = (data?.watchlist.length ?? 0) > 0 && (data?.watchlist ?? []).every((row) => !row.fetched && !row.missed);
   return (
     <ScoutPage
       title="Niche pulse"
@@ -115,7 +147,10 @@ export function IntelligenceScreen() {
               {},
               {
                 onSuccess: () => board.refetch(),
-                onError: (error) => toast.error(actionMessage(error)),
+                onError: (error) => {
+                  toast.error(actionMessage(error));
+                  void board.refetch();
+                },
               },
             )
           }
@@ -133,8 +168,10 @@ export function IntelligenceScreen() {
         onGeo={setGeo}
         onDyno={setDyno}
       />
-      <ErrorNote error={refresh.error} />
-      {board.isPending ? (
+      <ErrorNote error={refresh.error ?? board.error} />
+      {untouched ? <FirstRunNote pending={refresh.isPending} /> : null}
+      {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
+      {board.isPending || seeding ? (
         <RowsSkeleton />
       ) : (
         <div className="grid gap-4">
@@ -148,9 +185,13 @@ export function IntelligenceScreen() {
               </Link>
             </Panel>
           ) : null}
-          <BreakoutList videos={data?.breakouts ?? []} />
-          <TermList terms={data?.terms ?? []} />
-          <WatchList rows={data?.watchlist ?? []} onFetched={() => board.refetch()} />
+          <BreakoutList videos={data?.breakouts ?? []} untouched={untouched} />
+          <TermList terms={data?.terms ?? []} untouched={untouched} />
+          <WatchList
+            rows={data?.watchlist ?? []}
+            busy={refresh.isPending}
+            onFetched={() => board.refetch()}
+          />
           {data?.intelligence?.narrative ? (
             <Panel>
               <p className="whitespace-pre-wrap text-sm">{data.intelligence.narrative}</p>
@@ -252,12 +293,14 @@ function Select<T extends string>({
   );
 }
 
-function BreakoutList({ videos }: { videos: VideoHit[] }) {
+function BreakoutList({ videos, untouched = false }: { videos: VideoHit[]; untouched?: boolean }) {
   return (
     <div className="grid gap-2">
       {videos.length === 0 ? (
         <Panel>
-          <p className="text-sm">Breakouts show up after a watchlist fetch.</p>
+          <p className="text-sm">
+            {untouched ? "Breakouts land here after Refresh pulse." : "No breakouts in this filter."}
+          </p>
         </Panel>
       ) : (
         videos.slice(0, 8).map((video) => <VideoRow key={video.id} video={video} />)
@@ -313,14 +356,20 @@ function VideoRow({ video }: { video: VideoHit }) {
   );
 }
 
-function TermList({ terms }: { terms: TermRow[] }) {
+function TermList({ terms, untouched = false }: { terms: TermRow[]; untouched?: boolean }) {
   if (terms.length === 0) {
     return (
       <Panel>
-        <p className="text-sm">Trending terms land after Discover.</p>
-        <Link to="/trends" className="text-sm text-primary underline">
-          Discover trends
-        </Link>
+        <p className="text-sm">
+          {untouched
+            ? "Trending terms land here after Refresh pulse."
+            : "Trending terms land after Discover."}
+        </p>
+        {untouched ? null : (
+          <Link to="/trends" className="text-sm text-primary underline">
+            Discover trends
+          </Link>
+        )}
       </Panel>
     );
   }
@@ -348,42 +397,115 @@ function TermList({ terms }: { terms: TermRow[] }) {
   );
 }
 
-function WatchList({ rows, onFetched }: { rows: WatchRow[]; onFetched: () => void }) {
+function WatchList({
+  rows,
+  busy = false,
+  onFetched,
+}: {
+  rows: WatchRow[];
+  busy?: boolean;
+  onFetched: () => void;
+}) {
   const fetchOne = useActionMutation("scout-fetch-competitor");
+  const watchAll = useActionMutation("scout-watch-seeds");
+  const [activeHandle, setActiveHandle] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ handle: string; message: string } | null>(null);
+  const pending = rows.some((row) => !row.fetched && !row.missed);
+  const watchBusy = busy || fetchOne.isPending || watchAll.isPending || activeHandle != null;
+  function finishWatch(handle: string, error?: unknown) {
+    setActiveHandle((current) => (current === handle ? null : current));
+    if (error) {
+      const message = actionMessage(error) ?? "Watch failed.";
+      setRowError({ handle, message });
+      toast.error(message);
+    } else {
+      setRowError((current) => (current?.handle === handle ? null : current));
+    }
+    onFetched();
+  }
   return (
     <div className="grid gap-2">
-      {rows.map((row) => (
-        <Panel key={row.handle}>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium">{row.displayName}</p>
-              <p className="text-xs text-muted-foreground">
-                @{row.handle} · {row.role.replace(/_/g, " ")}
-                {row.fetched ? ` · ${formatCount(row.followers)} followers` : " · not fetched"}
-                {row.outlierCount > 0 ? ` · ${row.outlierCount} breakouts` : ""}
-              </p>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant={row.fetched ? "outline" : "default"}
-              disabled={fetchOne.isPending}
-              onClick={() =>
-                fetchOne.mutate(
-                  { handle: row.handle, role: row.role as "north_star" | "local" | "watch", displayName: row.displayName },
-                  {
-                    onSuccess: onFetched,
-                    onError: (error) => toast.error(actionMessage(error)),
+      {pending ? (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={watchBusy}
+            onClick={() => {
+              setRowError(null);
+              watchAll.mutate(
+                {},
+                {
+                  onSuccess: (result) => {
+                    onFetched();
+                    const payload = result as { message?: string; warning?: string | null };
+                    if (payload.warning) toast(payload.warning);
+                    else if (payload.message) toast.success(payload.message);
                   },
-                )
-              }
-            >
-              <PendingIcon pending={fetchOne.isPending} />
-              {row.fetched ? "Refresh" : "Watch"}
-            </Button>
-          </div>
-        </Panel>
-      ))}
+                  onError: (error) => {
+                    const message = actionMessage(error) ?? "Watch failed.";
+                    toast.error(message);
+                    onFetched();
+                  },
+                },
+              );
+            }}
+          >
+            <PendingIcon pending={watchAll.isPending} />
+            {watchAll.isPending ? "Watching seeds…" : "Watch all seeds"}
+          </Button>
+        </div>
+      ) : null}
+      {rows.map((row) => {
+        const watching = activeHandle === row.handle;
+        const message = rowError?.handle === row.handle ? rowError.message : null;
+        return (
+          <Panel key={row.handle}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">{row.displayName}</p>
+                <p className="text-xs text-muted-foreground">
+                  @{row.handle} · {row.role.replace(/_/g, " ")}
+                  {watching
+                    ? " · watching…"
+                    : row.fetched
+                      ? ` · ${formatCount(row.followers)} followers`
+                      : row.missed
+                        ? " · no public record"
+                        : " · not fetched"}
+                  {row.outlierCount > 0 ? ` · ${row.outlierCount} breakouts` : ""}
+                </p>
+                {message && !watching ? <p className="mt-1 text-xs text-destructive">{message}</p> : null}
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant={row.fetched ? "outline" : "default"}
+                disabled={watchBusy}
+                onClick={() => {
+                  setActiveHandle(row.handle);
+                  setRowError(null);
+                  fetchOne.mutate(
+                    {
+                      handle: row.handle,
+                      role: row.role as "north_star" | "local" | "watch",
+                      displayName: row.displayName,
+                    },
+                    {
+                      onSuccess: () => finishWatch(row.handle),
+                      onError: (error) => finishWatch(row.handle, error),
+                    },
+                  );
+                }}
+              >
+                <PendingIcon pending={watching} />
+                {watching ? "Watching…" : row.fetched ? "Refresh" : "Watch"}
+              </Button>
+            </div>
+          </Panel>
+        );
+      })}
     </div>
   );
 }
@@ -453,7 +575,7 @@ export function KeywordScreen() {
           ))}
         </div>
       ) : (
-        <details className="text-sm">
+        <details open className="text-sm">
           <summary>Seed library</summary>
           <ul className="mt-2 grid gap-1">
             {seeds.map((seed) => (
@@ -548,7 +670,20 @@ export function CompetitorScreen() {
             <VideoRow key={video.id} video={video} />
           ))}
         </div>
-      ) : null}
+      ) : (
+        <SeedAccounts
+          label="Watch a seed account. No TikTok login needed."
+          pending={fetchOne.isPending}
+          onPick={(row) => {
+            setHandle(row.handle);
+            fetchOne.mutate({
+              handle: row.handle,
+              role: row.role as "north_star" | "local" | "watch",
+              displayName: row.displayName,
+            });
+          }}
+        />
+      )}
     </ScoutPage>
   );
 }
@@ -666,7 +801,16 @@ export function AuditScreen() {
             Write the read
           </Button>
         </div>
-      ) : null}
+      ) : (
+        <SeedAccounts
+          label="Audit a seed account. No TikTok login needed."
+          pending={audit.isPending}
+          onPick={(row) => {
+            setHandle(row.handle);
+            audit.mutate({ handle: row.handle });
+          }}
+        />
+      )}
     </ScoutPage>
   );
 }
@@ -813,6 +957,9 @@ export function RecreateScreen() {
       ) : rows.length === 0 ? (
         <Panel>
           <p className="text-sm">Recreate a breakout to build a paste pack.</p>
+          <Link to="/home" className="text-sm text-primary underline">
+            Open Niche pulse
+          </Link>
         </Panel>
       ) : (
         <div className="grid gap-3">
@@ -880,7 +1027,7 @@ export function StubScreen({ platform }: { platform: string }) {
   return (
     <ScoutPage title={platform}>
       <Panel>
-        <p className="text-sm">TikTok is live. {platform} is not connected.</p>
+        <p className="text-sm">Coming later — TikTok doesn't need account linking.</p>
       </Panel>
     </ScoutPage>
   );
@@ -888,4 +1035,78 @@ export function StubScreen({ platform }: { platform: string }) {
 
 function actionMessage(error: unknown) {
   return actionErrorMessage(error);
+}
+
+function FirstRunNote({ pending }: { pending: boolean }) {
+  return (
+    <Panel>
+      <p className="text-sm">
+        {pending
+          ? "Pulling live search. No TikTok login needed."
+          : "No TikTok login needed — click Refresh pulse. Live search uses ScrapeCreators."}
+      </p>
+    </Panel>
+  );
+}
+
+function SeedAccounts({
+  label,
+  pending,
+  onPick,
+}: {
+  label: string;
+  pending: boolean;
+  onPick: (row: WatchRow) => void;
+}) {
+  const board = useActionQuery("scout-list", {});
+  const rows = ((board.data as Board | undefined)?.watchlist ?? []).slice(0, 6);
+  return (
+    <Panel>
+      <p className="text-sm">{label}</p>
+      {board.isPending ? (
+        <div className="mt-3 h-8 animate-pulse rounded-md bg-muted" />
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {rows.map((row) => (
+            <Button
+              key={row.handle}
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => onPick(row)}
+            >
+              {row.displayName}
+            </Button>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function noticeText(board: Board | undefined, report: unknown) {
+  const saved = board?.missedWarning;
+  if (saved) return saved;
+  const warning = (report as { warning?: string | null } | undefined)?.warning;
+  return warning || null;
+}
+
+function readPulseSeedAt(): number | null {
+  try {
+    const raw = localStorage.getItem(PULSE_SEED_STORAGE_KEY);
+    if (!raw) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePulseSeedAt(now: number) {
+  try {
+    localStorage.setItem(PULSE_SEED_STORAGE_KEY, String(now));
+  } catch {
+    // Private mode can block storage. The in-memory ref still stops a double fire.
+  }
 }

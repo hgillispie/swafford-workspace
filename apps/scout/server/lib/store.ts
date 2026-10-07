@@ -216,6 +216,33 @@ export async function latestReport(orgId: string, kind: string) {
   return rows.find((row) => row.kind === kind) ?? null;
 }
 
+export async function rememberIntelligenceMisses(
+  orgId: string,
+  missed: { handle: string; displayName: string }[],
+): Promise<void> {
+  if (missed.length === 0) return;
+  const current = await latestReport(orgId, "intelligence");
+  if (!current) return;
+  const packet = parseJson<Record<string, unknown>>(current.packetJson, {});
+  const previous = Array.isArray(packet.missedHandles) ? packet.missedHandles : [];
+  const byHandle = new Map<string, { handle: string; displayName: string }>();
+  for (const item of [...previous, ...missed]) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as { handle?: unknown; displayName?: unknown };
+    if (typeof record.handle !== "string" || !record.handle) continue;
+    byHandle.set(record.handle, {
+      handle: record.handle,
+      displayName: typeof record.displayName === "string" ? record.displayName : record.handle,
+    });
+  }
+  packet.missedHandles = [...byHandle.values()];
+  const db = getDb();
+  await db
+    .update(scoutReports)
+    .set({ packetJson: JSON.stringify(packet) })
+    .where(and(eq(scoutReports.id, current.id), eq(scoutReports.orgId, orgId)));
+}
+
 export async function insertRecreate(
   actor: Actor,
   input: {

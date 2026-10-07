@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { keepHit } from "./board.js";
-import { mergeBrand } from "./brand.js";
+import { keepHit, pulseNeedsLiveSeed, pulseSeedAllowed } from "./board.js";
+import { DEFAULT_BRAND, mergeBrand } from "./brand.js";
 import {
   buildPastePack,
   enforceCard,
@@ -16,8 +16,7 @@ import {
   postingHeatmap,
   volumeProxy,
 } from "./normalize.js";
-import { cacheKey, isFresh, mapProviderFailure } from "./provider.js";
-import { DEFAULT_BRAND } from "./brand.js";
+import { cacheKey, isFresh, mapProviderFailure, publicMissWarning } from "./provider.js";
 
 const aweme = {
   aweme_id: "123",
@@ -33,6 +32,10 @@ describe("provider", () => {
   it("maps rate limits to the provider phrase", () => {
     expect(mapProviderFailure(429).message).toBe("data provider rate-limited");
     expect(mapProviderFailure(401).errorCode).toBe("scrapecreators_unauthorized");
+    expect(publicMissWarning(["bertsharley", "@doc.harley"])).toBe(
+      "No public TikTok record for @bertsharley, @doc.harley.",
+    );
+    expect(publicMissWarning([])).toBeNull();
   });
 
   it("treats expiry as a timestamp", () => {
@@ -155,6 +158,59 @@ describe("guardrails", () => {
   });
 });
 
+describe("pulse seed", () => {
+  const cold = {
+    configured: true,
+    breakouts: [],
+    terms: [{ label: "discover" }],
+    watchlist: [{ fetched: false }, { fetched: false }],
+    intelligence: null,
+  };
+
+  it("seeds when the key is set and every watchlist row is unfetched", () => {
+    expect(pulseNeedsLiveSeed(cold)).toBe(true);
+  });
+
+  it("seeds a fully empty cache and skips once any competitor is fetched", () => {
+    expect(
+      pulseNeedsLiveSeed({
+        configured: true,
+        breakouts: [],
+        terms: [],
+        watchlist: [],
+        intelligence: null,
+      }),
+    ).toBe(true);
+    expect(
+      pulseNeedsLiveSeed({
+        ...cold,
+        terms: [],
+        watchlist: [{ fetched: true }],
+      }),
+    ).toBe(false);
+  });
+
+  it("does not seed when every open row was already a miss", () => {
+    expect(
+      pulseNeedsLiveSeed({
+        ...cold,
+        watchlist: [
+          { fetched: false, missed: true },
+          { fetched: false, missed: true },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("does not seed without the key or inside the reload cooldown", () => {
+    expect(pulseNeedsLiveSeed({ ...cold, configured: false })).toBe(false);
+    const now = Date.parse("2026-10-07T15:00:00.000Z");
+    expect(pulseSeedAllowed(null, now)).toBe(true);
+    expect(pulseSeedAllowed(now - 60_000, now)).toBe(false);
+    expect(pulseSeedAllowed(now - 31 * 60 * 1000, now)).toBe(true);
+  });
+});
+
 describe("brand", () => {
   it("keeps seeds when a saved brand is partial and locks dyno unless explicitly true", () => {
     const merged = mergeBrand({ displayName: "Other Shop", dynoUnlocked: false, watchlist: [] });
@@ -166,6 +222,31 @@ describe("brand", () => {
     expect(merged.dynoUnlocked).toBe(false);
     expect(mergeBrand({ dynoUnlocked: true }).dynoUnlocked).toBe(true);
     expect(merged.recreateRule).toBe("original_shoot");
+  });
+
+  it("repairs watchlist usernames that are not public TikTok records", () => {
+    expect(DEFAULT_BRAND.watchlist.map((item) => item.handle)).toEqual([
+      "mickeycohenmotorsports",
+      "bertsmotorcompany",
+      "doc.harley",
+      "kruesi.originals",
+      "rev_moto_nc",
+      "that_z900_dude",
+    ]);
+    const repaired = mergeBrand({
+      watchlist: [
+        { handle: "@bertsharley", displayName: "BertsHarley", role: "north_star" },
+        { handle: "docharley", displayName: "Doc Harley", role: "north_star" },
+        { handle: "kruesi", displayName: "Kruesi Originals", role: "north_star" },
+        { handle: "kruesi", displayName: "Kruesi", role: "watch" },
+      ],
+    });
+    expect(repaired.watchlist.map((item) => item.handle)).toEqual([
+      "bertsmotorcompany",
+      "doc.harley",
+      "kruesi.originals",
+      "kruesi",
+    ]);
   });
 
   it("filters dyno-unsafe hits", () => {

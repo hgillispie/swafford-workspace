@@ -14,8 +14,8 @@ export function ScoutPage({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4 md:p-6">
-      <div className="flex min-h-9 items-center justify-end gap-2">
-        <h1 className="sr-only">{title}</h1>
+      <div className="flex min-h-9 items-center justify-between gap-3">
+        <h1 className="text-lg font-medium">{title}</h1>
         {action}
       </div>
       <ProviderNote />
@@ -33,8 +33,8 @@ export function ProviderNote() {
   if (configured !== false) return null;
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
-      <span>SCRAPECREATORS_API_KEY</span>
-      <Link to="/settings" className="text-primary underline">
+      <span>Live TikTok search needs a ScrapeCreators key.</span>
+      <Link to="/settings" className="shrink-0 text-primary underline">
         Add in Settings
       </Link>
     </div>

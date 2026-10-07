@@ -65,3 +65,9 @@ export function mapProviderFailure(status: number): ProviderFailure {
 
 export const MISSING_KEY_MESSAGE =
   "SCRAPECREATORS_API_KEY is not set. Add it in Settings or as a deploy env var.";
+
+export function publicMissWarning(handles: readonly string[]): string | null {
+  const names = handles.map((handle) => handle.trim().replace(/^@/, "")).filter(Boolean);
+  if (names.length === 0) return null;
+  return `No public TikTok record for ${names.map((handle) => `@${handle}`).join(", ")}.`;
+}

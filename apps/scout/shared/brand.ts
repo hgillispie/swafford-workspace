@@ -71,9 +71,9 @@ export const DEFAULT_BRAND: BrandConfig = {
       displayName: "Mickey Cohen Motorsports",
       role: "north_star",
     },
-    { handle: "bertsharley", displayName: "BertsHarley", role: "north_star" },
-    { handle: "docharley", displayName: "Doc Harley", role: "north_star" },
-    { handle: "kruesi", displayName: "Kruesi Originals", role: "north_star" },
+    { handle: "bertsmotorcompany", displayName: "Bert's Motor Company", role: "north_star" },
+    { handle: "doc.harley", displayName: "Doc Harley", role: "north_star" },
+    { handle: "kruesi.originals", displayName: "Kruesi Originals", role: "north_star" },
     // Regional accounts from the Oct 5 pulse fixture. Upstate SC's local list
     // was empty; that_z900_dude is the documented Upstate up-and-comer.
     { handle: "rev_moto_nc", displayName: "Rev Moto NC", role: "local" },
@@ -128,6 +128,31 @@ export const DEFAULT_BRAND: BrandConfig = {
   ],
 };
 
+/** Usernames that 404 on TikTok. Repair runs on every read, including a saved brand. */
+const RETIRED_WATCH: Record<string, Pick<WatchSeed, "handle" | "displayName">> = {
+  bertsharley: { handle: "bertsmotorcompany", displayName: "Bert's Motor Company" },
+  docharley: { handle: "doc.harley", displayName: "Doc Harley" },
+};
+
+export function repairWatchlist(list: WatchSeed[]): WatchSeed[] {
+  const seen = new Set<string>();
+  const next: WatchSeed[] = [];
+  for (const item of list) {
+    const raw = item.handle.trim().replace(/^@/, "").toLowerCase();
+    const retired = RETIRED_WATCH[raw];
+    const shopKruesi = raw === "kruesi" && /kruesi originals/i.test(item.displayName);
+    const handle = retired?.handle ?? (shopKruesi ? "kruesi.originals" : raw);
+    if (!handle || seen.has(handle)) continue;
+    seen.add(handle);
+    next.push({
+      handle,
+      displayName: retired?.displayName ?? (shopKruesi ? "Kruesi Originals" : item.displayName),
+      role: item.role,
+    });
+  }
+  return next;
+}
+
 export function mergeBrand(saved: Partial<BrandConfig> | null | undefined): BrandConfig {
   if (!saved) return { ...DEFAULT_BRAND, watchlist: [...DEFAULT_BRAND.watchlist], seedKeywords: [...DEFAULT_BRAND.seedKeywords] };
   return {
@@ -137,7 +162,7 @@ export function mergeBrand(saved: Partial<BrandConfig> | null | undefined): Bran
     localHashtags: saved.localHashtags?.length
       ? saved.localHashtags
       : DEFAULT_BRAND.localHashtags,
-    watchlist: saved.watchlist?.length ? saved.watchlist : DEFAULT_BRAND.watchlist,
+    watchlist: repairWatchlist(saved.watchlist?.length ? saved.watchlist : DEFAULT_BRAND.watchlist),
     seedKeywords: saved.seedKeywords?.length
       ? saved.seedKeywords
       : DEFAULT_BRAND.seedKeywords,
