@@ -9,6 +9,7 @@ import {
 } from "./guardrails.js";
 import {
   classifyTerm,
+  competitorCaptionTerms,
   extractProfile,
   extractVideos,
   markOutliers,
@@ -84,6 +85,33 @@ describe("normalize", () => {
     expect(term.classification).toBe("flash_24_72h");
   });
 
+  it("seeds trend labels from competitor hashtags and repeated caption words", () => {
+    const base = extractVideos({ aweme_list: [aweme] }, "trend")[0]!;
+    const pump = {
+      ...base,
+      id: "pump",
+      caption: "Water pump fail on the Road Glide #waterpump #fyp",
+      hashtags: ["waterpump", "fyp"],
+    };
+    const exhaustA = {
+      ...base,
+      id: "ex-a",
+      caption: "Bagger exhaust note in the bay",
+      hashtags: [],
+    };
+    const exhaustB = {
+      ...base,
+      id: "ex-b",
+      caption: "Another bagger exhaust cold open",
+      hashtags: [],
+    };
+    const terms = competitorCaptionTerms([pump, exhaustA, exhaustB]);
+    expect(terms.map((term) => term.label)).toContain("#waterpump");
+    expect(terms.map((term) => term.label)).not.toContain("#fyp");
+    expect(terms.map((term) => term.label)).toContain("exhaust");
+    expect(competitorCaptionTerms([])).toEqual([]);
+  });
+
   it("counts posting hours in Eastern time", () => {
     const video = extractVideos({ aweme_list: [aweme] }, "hybrid")[0]!;
     const videos = Array.from({ length: 8 }, (_, index) => ({
@@ -132,6 +160,9 @@ describe("brand", () => {
     const merged = mergeBrand({ displayName: "Other Shop", dynoUnlocked: false, watchlist: [] });
     expect(merged.displayName).toBe("Other Shop");
     expect(merged.watchlist.map((item) => item.handle)).toContain("mickeycohenmotorsports");
+    expect(merged.watchlist.filter((item) => item.role === "local").map((item) => item.handle)).toEqual(
+      expect.arrayContaining(["rev_moto_nc", "that_z900_dude"]),
+    );
     expect(merged.dynoUnlocked).toBe(false);
     expect(mergeBrand({ dynoUnlocked: true }).dynoUnlocked).toBe(true);
     expect(merged.recreateRule).toBe("original_shoot");

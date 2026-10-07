@@ -45,6 +45,7 @@ import {
 } from "../../shared/guardrails.js";
 import {
   classifyTerm,
+  competitorCaptionTerms,
   ctaPatterns,
   extractProfile,
   extractVideos,
@@ -274,11 +275,21 @@ export async function discoverTrends(actor: Actor) {
   warning = warning ?? feed.warning;
   const flash = feed.data.videos.filter((video) => withinDays(video, 3));
   terms.push(classifyTerm("Trending feed", flash.length > 0 ? flash : feed.data.videos));
+  const saved = await listCompetitors(actor.orgId);
+  const seenLabels = new Set(terms.map((term) => term.label.toLowerCase()));
+  for (const term of competitorCaptionTerms(
+    saved.flatMap((row) => snapshotVideos(row.snapshotJson)),
+  )) {
+    if (seenLabels.has(term.label.toLowerCase())) continue;
+    seenLabels.add(term.label.toLowerCase());
+    terms.push(term);
+  }
   const packet = {
     windowDays: 14,
     terms,
     fetchedAt: new Date().toISOString(),
-    creditNote: "Up to two seed keyword searches and one trending feed. Cached hits are free.",
+    creditNote:
+      "Up to two seed keyword searches and one trending feed. Caption and hashtag terms come from saved competitor snapshots and do not add searches. Cached hits are free.",
   };
   const id = await insertReport(actor, {
     kind: "trends",

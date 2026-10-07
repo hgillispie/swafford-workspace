@@ -74,6 +74,10 @@ export const DEFAULT_BRAND: BrandConfig = {
     { handle: "bertsharley", displayName: "BertsHarley", role: "north_star" },
     { handle: "docharley", displayName: "Doc Harley", role: "north_star" },
     { handle: "kruesi", displayName: "Kruesi Originals", role: "north_star" },
+    // Regional accounts from the Oct 5 pulse fixture. Upstate SC's local list
+    // was empty; that_z900_dude is the documented Upstate up-and-comer.
+    { handle: "rev_moto_nc", displayName: "Rev Moto NC", role: "local" },
+    { handle: "that_z900_dude", displayName: "That Z900 Dude", role: "local" },
   ],
   seedKeywords: [
     {

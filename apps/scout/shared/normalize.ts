@@ -247,6 +247,66 @@ export interface TrendTerm {
   whyNow: string;
 }
 
+const CAPTION_STOP = new Set([
+  "fyp",
+  "foryou",
+  "foryoupage",
+  "viral",
+  "tiktok",
+  "xyzbca",
+  "capcut",
+  "duet",
+  "stitch",
+  "this",
+  "that",
+  "with",
+  "from",
+  "your",
+  "have",
+  "just",
+  "when",
+  "what",
+  "they",
+  "them",
+  "been",
+  "were",
+  "will",
+  "into",
+  "over",
+  "after",
+  "before",
+]);
+
+/**
+ * Extra trend labels from videos already saved on competitor snapshots.
+ * Hashtags win; a caption word is used only when it shows up on two or more videos.
+ */
+export function competitorCaptionTerms(videos: ScoutVideo[], limit = 4, now = Date.now()): TrendTerm[] {
+  const hashtags = new Map<string, ScoutVideo[]>();
+  const words = new Map<string, ScoutVideo[]>();
+  const push = (bucket: Map<string, ScoutVideo[]>, label: string, video: ScoutVideo) => {
+    const key = label.toLowerCase();
+    if (key.length < 3 || CAPTION_STOP.has(key)) return;
+    const list = bucket.get(key) ?? [];
+    if (!list.some((item) => item.id === video.id)) list.push(video);
+    bucket.set(key, list);
+  };
+  for (const video of videos) {
+    for (const tag of video.hashtags) push(hashtags, tag, video);
+    const plain = video.caption.replace(/#[\w]+/g, " ");
+    for (const word of plain.toLowerCase().match(/[a-z0-9]{4,}/g) ?? []) {
+      push(words, word, video);
+    }
+  }
+  const ranked = (bucket: Map<string, ScoutVideo[]>, prefix: string, minCount: number) =>
+    [...bucket.entries()]
+      .filter(([, sample]) => sample.length >= minCount)
+      .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+      .map(([label, sample]) => ({ label: `${prefix}${label}`, sample }));
+  const picked = [...ranked(hashtags, "#", 1), ...ranked(words, "", 2)].slice(0, limit);
+  return picked.map((item) => classifyTerm(item.label, item.sample, now));
+}
+
 export function classifyTerm(label: string, videos: ScoutVideo[], now = Date.now()): TrendTerm {
   const day = 24 * 60 * 60 * 1000;
   const ages = videos

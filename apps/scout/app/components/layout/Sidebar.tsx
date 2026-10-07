@@ -15,6 +15,8 @@ import {
 } from "@agent-native/toolkit/chat-history/ChatHistoryList";
 import {
   IconApps,
+  IconBrandInstagram,
+  IconBrandYoutube,
   IconChartBar,
   IconClock,
   IconEdit,
@@ -455,6 +457,8 @@ function ScoutNav({ collapsed }: { collapsed: boolean }) {
     { to: "/timing", label: "Timing", icon: IconClock },
     { to: "/create", label: "Create", icon: IconEdit },
     { to: "/recreates", label: "Recreates", icon: IconListCheck },
+    { to: "/instagram", label: "Instagram", icon: IconBrandInstagram },
+    { to: "/shorts", label: "Shorts", icon: IconBrandYoutube },
   ] as const;
   return (
     <div
