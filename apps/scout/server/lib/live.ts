@@ -23,6 +23,7 @@ import {
   readCache,
   readPulseEnrichment,
   readRecreate,
+  rememberIntelligenceMisses,
   saveAuditNarrative,
   saveReportNarrative,
   sendPulseIdea,
@@ -64,11 +65,31 @@ import {
   cacheKey,
   isFresh,
   MISSING_KEY_MESSAGE,
+  publicMissWarning,
   type CacheKind,
 } from "../../shared/provider.js";
 
 const REGION = "US";
 const SOUND_NOTE = "Observed on the fetched videos. Not a live music chart.";
+const RATE_LIMIT_MESSAGE = "data provider rate-limited";
+
+function absorbProviderError(error: unknown, warnings: string[]): "stop" | "miss" | "throw" {
+  if (!isActionContractError(error)) return "throw";
+  if (error.errorCode === "scrapecreators_key_missing") {
+    warnings.push(MISSING_KEY_MESSAGE);
+    return "stop";
+  }
+  if (error.errorCode === "provider_rate_limited") {
+    warnings.push(RATE_LIMIT_MESSAGE);
+    return "stop";
+  }
+  if (error.errorCode === "scrapecreators_credits") {
+    warnings.push(error.message);
+    return "stop";
+  }
+  if (error.errorCode === "not_found") return "miss";
+  return "throw";
+}
 
 interface Cached<T> {
   data: T;
@@ -205,13 +226,18 @@ async function loadCompetitor(apiKey: string, handle: string): Promise<Competito
   const profilePayload = await fetchProfile(apiKey, handle);
   const profile = extractProfile(profilePayload);
   if (!profile) {
-    fail("ScrapeCreators could not find that public record.", {
+    fail(`No public TikTok record for @${handle}.`, {
       statusCode: 404,
       errorCode: "not_found",
     });
   }
-  let videoPayload = await fetchProfileVideos(apiKey, profile.handle, REGION);
-  const videos = markOutliers(extractVideos(videoPayload, "hybrid"));
+  let videos: ScoutVideo[] = [];
+  try {
+    const videoPayload = await fetchProfileVideos(apiKey, profile.handle, REGION);
+    videos = markOutliers(extractVideos(videoPayload, "hybrid"));
+  } catch (error) {
+    if (!isActionContractError(error) || error.errorCode !== "not_found") throw error;
+  }
   const sounds = [...new Set(videos.flatMap((video) => (video.soundName ? [video.soundName] : [])))].slice(0, 8);
   return {
     profile,
@@ -232,11 +258,22 @@ export async function fetchCompetitor(
   const handle = input.handle.trim().replace(/^@/, "").toLowerCase();
   const brand = await readBrand(actor.orgId);
   const seed = brand.watchlist.find((item) => item.handle === handle);
-  const hit = await throughCache(actor, {
-    kind: "profile-videos",
-    query: handle,
-    load: (apiKey) => loadCompetitor(apiKey, handle),
-  });
+  let hit: Cached<CompetitorPacket>;
+  try {
+    hit = await throughCache(actor, {
+      kind: "profile-videos",
+      query: handle,
+      load: (apiKey) => loadCompetitor(apiKey, handle),
+    });
+  } catch (error) {
+    if (isActionContractError(error) && error.errorCode === "not_found") {
+      fail(`No public TikTok record for @${handle}.`, {
+        statusCode: 404,
+        errorCode: "not_found",
+      });
+    }
+    throw error;
+  }
   await upsertCompetitor(actor, {
     handle,
     displayName: hit.data.profile.displayName ?? input.displayName ?? seed?.displayName ?? null,
@@ -250,31 +287,55 @@ export async function discoverTrends(actor: Actor) {
   const brand = await readBrand(actor.orgId);
   const seeds = brand.seedKeywords.slice(0, 2);
   const terms: TrendTerm[] = [];
+  const warnings: string[] = [];
   let configured = true;
   let stale = false;
-  let warning: string | null = null;
+  let halted = false;
   for (const seed of seeds) {
-    const hit = await searchKeywords(actor, seed.term);
-    configured = configured && hit.configured;
-    stale = stale || hit.stale;
-    warning = warning ?? hit.warning;
-    const recent = hit.videos.filter((video) => withinDays(video, 14));
-    const sample = recent.length > 0 ? recent : hit.videos;
-    terms.push(classifyTerm(seed.term, sample));
+    try {
+      const hit = await searchKeywords(actor, seed.term);
+      configured = configured && hit.configured;
+      stale = stale || hit.stale;
+      if (hit.warning) warnings.push(hit.warning);
+      const recent = hit.videos.filter((video) => withinDays(video, 14));
+      const sample = recent.length > 0 ? recent : hit.videos;
+      terms.push(classifyTerm(seed.term, sample));
+    } catch (error) {
+      const kind = absorbProviderError(error, warnings);
+      if (kind === "miss") {
+        warnings.push(`No public results for “${seed.term}”.`);
+        continue;
+      }
+      if (kind === "stop") {
+        halted = true;
+        break;
+      }
+      throw error;
+    }
   }
-  const feed = await throughCache(actor, {
-    kind: "trending",
-    query: "feed",
-    load: async (apiKey) => {
-      const videos = markOutliers(extractVideos(await fetchTrending(apiKey), "trend"));
-      return { videos, fetchedAt: new Date().toISOString() };
-    },
-  });
-  configured = configured && feed.configured;
-  stale = stale || feed.stale;
-  warning = warning ?? feed.warning;
-  const flash = feed.data.videos.filter((video) => withinDays(video, 3));
-  terms.push(classifyTerm("Trending feed", flash.length > 0 ? flash : feed.data.videos));
+  let feedVideos: ScoutVideo[] = [];
+  if (!halted) {
+    try {
+      const feed = await throughCache(actor, {
+        kind: "trending",
+        query: "feed",
+        load: async (apiKey) => {
+          const videos = markOutliers(extractVideos(await fetchTrending(apiKey), "trend"));
+          return { videos, fetchedAt: new Date().toISOString() };
+        },
+      });
+      configured = configured && feed.configured;
+      stale = stale || feed.stale;
+      if (feed.warning) warnings.push(feed.warning);
+      feedVideos = feed.data.videos;
+    } catch (error) {
+      const kind = absorbProviderError(error, warnings);
+      if (kind === "stop") halted = true;
+      else if (kind !== "miss") throw error;
+    }
+  }
+  const flash = feedVideos.filter((video) => withinDays(video, 3));
+  terms.push(classifyTerm("Trending feed", flash.length > 0 ? flash : feedVideos));
   const saved = await listCompetitors(actor.orgId);
   const seenLabels = new Set(terms.map((term) => term.label.toLowerCase()));
   for (const term of competitorCaptionTerms(
@@ -296,7 +357,7 @@ export async function discoverTrends(actor: Actor) {
     title: "Discover trends",
     packet,
   });
-  return { id, ...packet, configured, stale, warning };
+  return { id, ...packet, configured, stale, halted, warning: warnings[0] ?? null };
 }
 
 export async function auditPage(actor: Actor, handleInput: string) {
@@ -368,19 +429,20 @@ export async function intelligenceReport(actor: Actor) {
   );
   const pending = brand.watchlist.filter((seed) => !freshHandles.has(seed.handle)).slice(0, 4);
   const warnings = [discovered.warning].filter((item): item is string => Boolean(item));
-  for (const seed of pending) {
-    try {
-      await fetchCompetitor(actor, seed);
-    } catch (error) {
-      if (isActionContractError(error) && error.errorCode === "scrapecreators_key_missing") {
-        warnings.push(MISSING_KEY_MESSAGE);
-        break;
+  const missed: { handle: string; displayName: string }[] = [];
+  if (!discovered.halted) {
+    for (const seed of pending) {
+      try {
+        await fetchCompetitor(actor, seed);
+      } catch (error) {
+        const kind = absorbProviderError(error, warnings);
+        if (kind === "miss") {
+          missed.push({ handle: seed.handle, displayName: seed.displayName });
+          continue;
+        }
+        if (kind === "stop") break;
+        throw error;
       }
-      if (isActionContractError(error) && error.errorCode === "provider_rate_limited") {
-        warnings.push("data provider rate-limited");
-        break;
-      }
-      throw error;
     }
   }
   const board = await listDashboard(actor, {
@@ -388,13 +450,15 @@ export async function intelligenceReport(actor: Actor) {
     geo: "all",
     dyno: "all",
   });
+  const missWarning = publicMissWarning(missed.map((item) => item.handle));
   const packet = {
     generatedAt: new Date().toISOString(),
     terms: discovered.terms,
     breakouts: board.breakouts,
     watchlist: board.watchlist,
     pulse: board.pulse,
-    creditNote: "Refresh spends credits only for stale seed searches, the trending feed, and up to four watchlist profiles.",
+    missedHandles: missed,
+    creditNote: "Refresh spends credits only for stale seed searches, the trending feed, and up to four watchlist profiles. A missing public record is skipped.",
   };
   const id = await insertReport(actor, {
     kind: "intelligence",
@@ -406,8 +470,55 @@ export async function intelligenceReport(actor: Actor) {
     ...packet,
     configured: discovered.configured,
     stale: discovered.stale,
-    warning: warnings[0] ?? null,
+    warning: [missWarning, ...warnings].filter((item): item is string => Boolean(item)).join(" ") || null,
     nextRequiredAction: "scout-save-report",
+  };
+}
+
+const MAX_WATCH_SEEDS = 8;
+
+export async function watchAllSeeds(actor: Actor) {
+  const brand = await readBrand(actor.orgId);
+  const saved = await listCompetitors(actor.orgId);
+  const fetched = new Set(
+    saved
+      .filter((row) => {
+        const snapshot = parseJson<CompetitorPacket>(row.snapshotJson, {} as CompetitorPacket);
+        return Boolean(snapshot.profile);
+      })
+      .map((row) => row.handle),
+  );
+  const pending = brand.watchlist.filter((seed) => !fetched.has(seed.handle)).slice(0, MAX_WATCH_SEEDS);
+  const warnings: string[] = [];
+  const missed: { handle: string; displayName: string }[] = [];
+  let watched = 0;
+  for (const seed of pending) {
+    try {
+      await fetchCompetitor(actor, seed);
+      watched += 1;
+    } catch (error) {
+      const kind = absorbProviderError(error, warnings);
+      if (kind === "miss") {
+        missed.push({ handle: seed.handle, displayName: seed.displayName });
+        continue;
+      }
+      if (kind === "stop") break;
+      throw error;
+    }
+  }
+  const missWarning = publicMissWarning(missed.map((item) => item.handle));
+  await rememberIntelligenceMisses(actor.orgId, missed);
+  return {
+    watched,
+    remaining: Math.max(0, pending.length - watched - missed.length),
+    missedHandles: missed,
+    warning: [missWarning, ...warnings].filter((item): item is string => Boolean(item)).join(" ") || null,
+    message:
+      watched > 0
+        ? `Watched ${watched} seed account${watched === 1 ? "" : "s"}.`
+        : missed.length > 0
+          ? "Those seed accounts have no public TikTok record."
+          : "Seed accounts were already watched.",
   };
 }
 
@@ -589,6 +700,7 @@ export async function listDashboard(actor: Actor, filters: BoardFilters) {
       displayName: row?.displayName ?? seed.displayName,
       role: row?.role ?? seed.role,
       fetched: Boolean(snapshot?.profile),
+      missed: false,
       followers: snapshot?.profile?.followers ?? null,
       outlierCount: snapshot?.videos?.filter((video) => video.outlier).length ?? 0,
     };
@@ -601,6 +713,7 @@ export async function listDashboard(actor: Actor, filters: BoardFilters) {
       displayName: row.displayName ?? snapshot.profile?.displayName ?? row.handle,
       role: row.role,
       fetched: Boolean(snapshot.profile),
+      missed: false,
       followers: snapshot.profile?.followers ?? null,
       outlierCount: snapshot.videos?.filter((video) => video.outlier).length ?? 0,
     });
@@ -629,6 +742,20 @@ export async function listDashboard(actor: Actor, filters: BoardFilters) {
   }));
   const pulse = await readPulseEnrichment(actor.orgId);
   const configured = Boolean(await readScrapeKey());
+  const intelligencePacket = intelligence
+    ? parseJson<{ missedHandles?: { handle: string; displayName: string }[] }>(
+        intelligence.packetJson,
+        {},
+      )
+    : {};
+  const missedHandles = (intelligencePacket.missedHandles ?? []).filter(
+    (item): item is { handle: string; displayName: string } =>
+      Boolean(item && typeof item.handle === "string" && !watchlist.some((row) => row.handle === item.handle && row.fetched)),
+  );
+  const missedSet = new Set(missedHandles.map((item) => item.handle));
+  for (const row of watchlist) {
+    if (!row.fetched && missedSet.has(row.handle)) row.missed = true;
+  }
   return {
     configured,
     brand: publicBrand(brand),
@@ -640,6 +767,8 @@ export async function listDashboard(actor: Actor, filters: BoardFilters) {
     drafts,
     audits,
     pulse,
+    missedHandles,
+    missedWarning: publicMissWarning(missedHandles.map((item) => item.handle)),
     intelligence: intelligence
       ? { id: intelligence.id, narrative: intelligence.narrative, createdAt: intelligence.createdAt }
       : null,
