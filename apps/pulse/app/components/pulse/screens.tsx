@@ -3,15 +3,32 @@ import {
   useActionMutation,
   useActionQuery,
 } from "@agent-native/core/client/hooks";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
 import { FOLLOWER_LIKE_TARGET_PCT } from "../../../shared/pulse-guardrails";
-import { CardSkeleton, CopyPackButton, MetaLine, Panel, PulsePage } from "./chrome";
+
+const readOnce = { retry: false };
 import { useState } from "react";
 import { Link } from "react-router";
 
-type Paste = { caption: string; capcut: string; descript: string; markdown: string };
+import {
+  AsyncRegion,
+  CardSkeleton,
+  CopyPackButton,
+  MetaLine,
+  Panel,
+  PulsePage,
+} from "./chrome";
+
+type Paste = {
+  caption: string;
+  capcut: string;
+  descript: string;
+  markdown: string;
+};
 
 type ShootCard = {
   id: string;
@@ -38,7 +55,11 @@ type Latest = {
   } | null;
   cards: ShootCard[];
   postingWindows: {
-    recommendedSlots: Array<{ dayOfWeek: string; localTime: string; reason: string }>;
+    recommendedSlots: Array<{
+      dayOfWeek: string;
+      localTime: string;
+      reason: string;
+    }>;
     caveat: string;
   } | null;
   dataGaps: Array<{ message: string; severity: string }>;
@@ -47,7 +68,7 @@ type Latest = {
 };
 
 export function WeekScreen() {
-  const latest = useActionQuery("pulse-get-latest", {});
+  const latest = useActionQuery("pulse-get-latest", {}, readOnce);
   const data = latest.data as Latest | undefined;
   const lead = data?.cards[0];
   return (
@@ -66,70 +87,81 @@ export function WeekScreen() {
         ) : null
       }
     >
-      {latest.isPending ? (
-        <>
-          <CardSkeleton />
-          <CardSkeleton />
-        </>
-      ) : !data?.report ? (
-        <Panel>
-          <p className="text-sm">
-            No pulse stored yet. Brandbot can POST the JSON, or paste a Drive
-            drop in Inbox.
-          </p>
-          <Link
-            to="/inbox"
-            className="mt-3 inline-flex h-8 items-center rounded-md border border-border px-3 text-sm"
-          >
-            Open inbox
-          </Link>
-        </Panel>
-      ) : (
-        <>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-            {data.report.mattBlurb}
-          </p>
-          <MetaLine
-            items={[
-              data.report.reportDate,
-              `search ${data.mix.search}`,
-              `trend ${data.mix.trend}`,
-              `hybrid ${data.mix.hybrid}`,
-              data.report.effectiveDynoUnlocked ? "dyno unlocked" : "dyno-safe",
-            ]}
-          />
-          {data.dataGaps.length > 0 ? (
-            <Panel>
-              <h2 className="text-sm font-medium">Gaps</h2>
-              <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                {data.dataGaps.map((gap) => (
-                  <li key={gap.message}>{gap.message}</li>
-                ))}
-              </ul>
-            </Panel>
-          ) : null}
-          <div className="grid gap-3">
-            {data.cards.map((card) => (
-              <ShootCardView key={card.id} card={card} />
-            ))}
-          </div>
-          {data.postingWindows ? (
-            <Panel>
-              <h2 className="text-sm font-medium">Posting windows</h2>
-              <ul className="mt-2 space-y-1 text-sm">
-                {data.postingWindows.recommendedSlots.map((slot) => (
-                  <li key={`${slot.dayOfWeek}-${slot.localTime}`}>
-                    {slot.dayOfWeek} {slot.localTime} ET — {slot.reason}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {data.postingWindows.caveat}
-              </p>
-            </Panel>
-          ) : null}
-        </>
-      )}
+      <AsyncRegion
+        pending={latest.isPending}
+        isError={latest.isError}
+        error={latest.error}
+        onRetry={() => void latest.refetch()}
+        label="This week"
+        skeleton={
+          <>
+            <CardSkeleton />
+            <CardSkeleton />
+          </>
+        }
+      >
+        {!data?.report ? (
+          <Panel>
+            <p className="text-sm">
+              No pulse stored yet. Brandbot can POST the JSON, or paste a Drive
+              drop in Inbox.
+            </p>
+            <Link
+              to="/inbox"
+              className="mt-3 inline-flex h-8 items-center rounded-md border border-border px-3 text-sm"
+            >
+              Open inbox
+            </Link>
+          </Panel>
+        ) : (
+          <>
+            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+              {data.report.mattBlurb}
+            </p>
+            <MetaLine
+              items={[
+                data.report.reportDate,
+                `search ${data.mix.search}`,
+                `trend ${data.mix.trend}`,
+                `hybrid ${data.mix.hybrid}`,
+                data.report.effectiveDynoUnlocked
+                  ? "dyno unlocked"
+                  : "dyno-safe",
+              ]}
+            />
+            {data.dataGaps.length > 0 ? (
+              <Panel>
+                <h2 className="text-sm font-medium">Gaps</h2>
+                <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                  {data.dataGaps.map((gap) => (
+                    <li key={gap.message}>{gap.message}</li>
+                  ))}
+                </ul>
+              </Panel>
+            ) : null}
+            <div className="grid gap-3">
+              {data.cards.map((card) => (
+                <ShootCardView key={card.id} card={card} />
+              ))}
+            </div>
+            {data.postingWindows ? (
+              <Panel>
+                <h2 className="text-sm font-medium">Posting windows</h2>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {data.postingWindows.recommendedSlots.map((slot) => (
+                    <li key={`${slot.dayOfWeek}-${slot.localTime}`}>
+                      {slot.dayOfWeek} {slot.localTime} ET — {slot.reason}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {data.postingWindows.caveat}
+                </p>
+              </Panel>
+            ) : null}
+          </>
+        )}
+      </AsyncRegion>
     </PulsePage>
   );
 }
@@ -202,24 +234,31 @@ function ShootCardView({ card }: { card: ShootCard }) {
 }
 
 export function ShootScreen() {
-  const query = useActionQuery("pulse-list-recreate-cards", {});
+  const query = useActionQuery("pulse-list-recreate-cards", {}, readOnce);
   const cards = ((query.data as { cards?: ShootCard[] } | undefined)?.cards ??
     []) as ShootCard[];
   return (
     <PulsePage kicker="Shoot" title="Paste packs">
-      {query.isPending ? (
-        <CardSkeleton />
-      ) : cards.length === 0 ? (
-        <Panel>
-          <p className="text-sm">Cards land with the next pulse.</p>
-        </Panel>
-      ) : (
-        <div className="grid gap-3">
-          {cards.map((card) => (
-            <ShootCardView key={card.id} card={card} />
-          ))}
-        </div>
-      )}
+      <AsyncRegion
+        pending={query.isPending}
+        isError={query.isError}
+        error={query.error}
+        onRetry={() => void query.refetch()}
+        label="Shoot cards"
+        skeleton={<CardSkeleton />}
+      >
+        {cards.length === 0 ? (
+          <Panel>
+            <p className="text-sm">Cards land with the next pulse.</p>
+          </Panel>
+        ) : (
+          <div className="grid gap-3">
+            {cards.map((card) => (
+              <ShootCardView key={card.id} card={card} />
+            ))}
+          </div>
+        )}
+      </AsyncRegion>
     </PulsePage>
   );
 }
@@ -239,7 +278,7 @@ type Keyword = {
 export function KeywordScreen() {
   const [q, setQ] = useState("");
   const [term, setTerm] = useState("");
-  const query = useActionQuery("pulse-list-keywords", q ? { q } : {});
+  const query = useActionQuery("pulse-list-keywords", q ? { q } : {}, readOnce);
   const save = useActionMutation("pulse-upsert-keyword");
   const keywords = ((query.data as { keywords?: Keyword[] } | undefined)
     ?.keywords ?? []) as Keyword[];
@@ -291,15 +330,26 @@ export function KeywordScreen() {
           Save
         </Button>
       </form>
-      {query.isPending ? (
-        <CardSkeleton />
-      ) : (
+      <AsyncRegion
+        pending={query.isPending}
+        isError={query.isError}
+        error={query.error}
+        onRetry={() => void query.refetch()}
+        label="Keywords"
+        skeleton={<CardSkeleton />}
+      >
         <ul className="divide-y divide-border rounded-lg border border-border bg-card">
           {keywords.map((row) => (
             <li key={row.id} className="px-4 py-3">
               <p className="text-sm font-medium">{row.term}</p>
               <MetaLine
-                items={[row.searchVsTrend, row.intent, row.pillar, row.geo, row.source]}
+                items={[
+                  row.searchVsTrend,
+                  row.intent,
+                  row.pillar,
+                  row.geo,
+                  row.source,
+                ]}
               />
               {row.related.length > 0 ? (
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -309,7 +359,7 @@ export function KeywordScreen() {
             </li>
           ))}
         </ul>
-      )}
+      </AsyncRegion>
     </PulsePage>
   );
 }
@@ -329,53 +379,72 @@ type Account = {
 };
 
 export function CompetitorScreen() {
-  const query = useActionQuery("pulse-list-competitors", {});
+  const query = useActionQuery("pulse-list-competitors", {}, readOnce);
   const data = query.data as
-    | { accounts?: Account[]; localNotes?: string | null; reportDate?: string | null }
+    | {
+        accounts?: Account[];
+        localNotes?: string | null;
+        reportDate?: string | null;
+      }
     | undefined;
   const accounts = data?.accounts ?? [];
   return (
     <PulsePage kicker="Watchlist" title="Competitors">
-      {query.isPending ? (
-        <CardSkeleton />
-      ) : accounts.length === 0 ? (
-        <Panel>
-          <p className="text-sm">North stars show up after the first pulse.</p>
-        </Panel>
-      ) : (
-        <>
-          {data?.localNotes ? (
-            <p className="text-sm text-muted-foreground">{data.localNotes}</p>
-          ) : null}
-          <ul className="grid gap-3">
-            {accounts.map((row) => (
-              <li key={row.id}>
-                <Panel>
-                  <h2 className="text-sm font-medium">
-                    {row.displayName || `@${row.handle}`}
-                  </h2>
-                  <MetaLine
-                    items={[
-                      `@${row.handle}`,
-                      row.role,
-                      row.section,
-                      row.geo,
-                      row.followers != null ? `${row.followers} followers` : null,
-                      row.medianViews != null ? `median ${Math.round(row.medianViews)}` : null,
-                      row.followerLikeHealthPct != null
-                        ? `followers÷likes ${row.followerLikeHealthPct}%`
-                        : null,
-                    ]}
-                  />
-                  {row.notes ? (
-                    <p className="mt-2 text-sm text-muted-foreground">{row.notes}</p>
-                  ) : null}
-                </Panel>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      <AsyncRegion
+        pending={query.isPending}
+        isError={query.isError}
+        error={query.error}
+        onRetry={() => void query.refetch()}
+        label="Watchlist"
+        skeleton={<CardSkeleton />}
+      >
+        {accounts.length === 0 ? (
+          <Panel>
+            <p className="text-sm">
+              North stars show up after the first pulse.
+            </p>
+          </Panel>
+        ) : (
+          <>
+            {data?.localNotes ? (
+              <p className="text-sm text-muted-foreground">{data.localNotes}</p>
+            ) : null}
+            <ul className="grid gap-3">
+              {accounts.map((row) => (
+                <li key={row.id}>
+                  <Panel>
+                    <h2 className="text-sm font-medium">
+                      {row.displayName || `@${row.handle}`}
+                    </h2>
+                    <MetaLine
+                      items={[
+                        `@${row.handle}`,
+                        row.role,
+                        row.section,
+                        row.geo,
+                        row.followers != null
+                          ? `${row.followers} followers`
+                          : null,
+                        row.medianViews != null
+                          ? `median ${Math.round(row.medianViews)}`
+                          : null,
+                        row.followerLikeHealthPct != null
+                          ? `followers÷likes ${row.followerLikeHealthPct}%`
+                          : null,
+                      ]}
+                    />
+                    {row.notes ? (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {row.notes}
+                      </p>
+                    ) : null}
+                  </Panel>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </AsyncRegion>
     </PulsePage>
   );
 }
@@ -392,53 +461,64 @@ type Trend = {
 };
 
 export function TrendScreen() {
-  const query = useActionQuery("pulse-list-trends", {});
+  const query = useActionQuery("pulse-list-trends", {}, readOnce);
   const trends = ((query.data as { trends?: Trend[] } | undefined)?.trends ??
     []) as Trend[];
   return (
     <PulsePage kicker="Discover" title="Trends">
-      {query.isPending ? (
-        <CardSkeleton />
-      ) : trends.length === 0 ? (
-        <Panel>
-          <p className="text-sm">Trending terms arrive with the pulse.</p>
-        </Panel>
-      ) : (
-        <ul className="grid gap-3">
-          {trends.map((row) => (
-            <li key={row.id}>
-              <Panel>
-                <h2 className="text-sm font-medium">{row.label}</h2>
-                <MetaLine
-                  items={[
-                    row.kind,
-                    row.classification,
-                    row.searchVsTrend,
-                    row.dynoSafe ? "dyno-safe" : "dyno claim",
-                    row.halfLifeDays != null ? `${row.halfLifeDays}d half-life` : null,
-                  ]}
-                />
-                {row.whyNow ? <p className="mt-2 text-sm">{row.whyNow}</p> : null}
-                <Button
-                  className="mt-3"
-                  size="sm"
-                  variant="outline"
-                  type="button"
-                  onClick={() =>
-                    sendToAgentChat({
-                      openSidebar: true,
-                      submit: true,
-                      message: `Draft an original Swafford shoot card inspired by the format “${row.label}”. Do not copy footage. Include hook, caption, CapCut scene outline (3–5s cuts), Descript beats, Pocket 4 / Osmo 360 / Mic Mini notes, and the soft CTA to swaffordspeed.com. Save it with pulse-upsert-idea.`,
-                    })
-                  }
-                >
-                  Recreate as paste pack
-                </Button>
-              </Panel>
-            </li>
-          ))}
-        </ul>
-      )}
+      <AsyncRegion
+        pending={query.isPending}
+        isError={query.isError}
+        error={query.error}
+        onRetry={() => void query.refetch()}
+        label="Trends"
+        skeleton={<CardSkeleton />}
+      >
+        {trends.length === 0 ? (
+          <Panel>
+            <p className="text-sm">Trending terms arrive with the pulse.</p>
+          </Panel>
+        ) : (
+          <ul className="grid gap-3">
+            {trends.map((row) => (
+              <li key={row.id}>
+                <Panel>
+                  <h2 className="text-sm font-medium">{row.label}</h2>
+                  <MetaLine
+                    items={[
+                      row.kind,
+                      row.classification,
+                      row.searchVsTrend,
+                      row.dynoSafe ? "dyno-safe" : "dyno claim",
+                      row.halfLifeDays != null
+                        ? `${row.halfLifeDays}d half-life`
+                        : null,
+                    ]}
+                  />
+                  {row.whyNow ? (
+                    <p className="mt-2 text-sm">{row.whyNow}</p>
+                  ) : null}
+                  <Button
+                    className="mt-3"
+                    size="sm"
+                    variant="outline"
+                    type="button"
+                    onClick={() =>
+                      sendToAgentChat({
+                        openSidebar: true,
+                        submit: true,
+                        message: `Draft an original Swafford shoot card inspired by the format “${row.label}”. Do not copy footage. Include hook, caption, CapCut scene outline (3–5s cuts), Descript beats, Pocket 4 / Osmo 360 / Mic Mini notes, and the soft CTA to swaffordspeed.com. Save it with pulse-upsert-idea.`,
+                      })
+                    }
+                  >
+                    Recreate as paste pack
+                  </Button>
+                </Panel>
+              </li>
+            ))}
+          </ul>
+        )}
+      </AsyncRegion>
     </PulsePage>
   );
 }
@@ -468,7 +548,7 @@ function HeatRow({
 }
 
 export function TimingScreen() {
-  const latest = useActionQuery("pulse-get-latest", {});
+  const latest = useActionQuery("pulse-get-latest", {}, readOnce);
   const data = latest.data as Latest | undefined;
   const windows = data?.postingWindows as
     | (Latest["postingWindows"] & {
@@ -479,38 +559,59 @@ export function TimingScreen() {
   const days = windows?.heatmapProxy?.days ?? [];
   return (
     <PulsePage kicker="Timing" title="When to post">
-      {latest.isPending ? (
-        <CardSkeleton />
-      ) : !windows ? (
-        <Panel>
-          <p className="text-sm">Heatmap proxy arrives with the pulse.</p>
-        </Panel>
-      ) : (
-        <>
-          <ul className="space-y-2">
-            {windows.recommendedSlots.map((slot) => (
-              <li key={`${slot.dayOfWeek}-${slot.localTime}`} className="text-sm">
-                <span className="font-medium uppercase">{slot.dayOfWeek}</span>{" "}
-                {slot.localTime} ET — {slot.reason}
-              </li>
-            ))}
-          </ul>
-          <Panel className="overflow-x-auto">
-            <div className="grid min-w-[640px] grid-cols-[3rem_repeat(24,minmax(0,1fr))] gap-px">
-              <span />
-              {Array.from({ length: 24 }, (_, hour) => (
-                <span key={hour} className="text-center text-[10px] text-muted-foreground">
-                  {hour}
-                </span>
-              ))}
-              {days.map((row, index) => (
-                <HeatRow key={DAYS[index] ?? index} label={DAYS[index] ?? ""} cells={row} />
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-muted-foreground">{windows.caveat}</p>
+      <AsyncRegion
+        pending={latest.isPending}
+        isError={latest.isError}
+        error={latest.error}
+        onRetry={() => void latest.refetch()}
+        label="Timing"
+        skeleton={<CardSkeleton />}
+      >
+        {!windows ? (
+          <Panel>
+            <p className="text-sm">Heatmap proxy arrives with the pulse.</p>
           </Panel>
-        </>
-      )}
+        ) : (
+          <>
+            <ul className="space-y-2">
+              {windows.recommendedSlots.map((slot) => (
+                <li
+                  key={`${slot.dayOfWeek}-${slot.localTime}`}
+                  className="text-sm"
+                >
+                  <span className="font-medium uppercase">
+                    {slot.dayOfWeek}
+                  </span>{" "}
+                  {slot.localTime} ET — {slot.reason}
+                </li>
+              ))}
+            </ul>
+            <Panel className="overflow-x-auto">
+              <div className="grid min-w-[640px] grid-cols-[3rem_repeat(24,minmax(0,1fr))] gap-px">
+                <span />
+                {Array.from({ length: 24 }, (_, hour) => (
+                  <span
+                    key={hour}
+                    className="text-center text-[10px] text-muted-foreground"
+                  >
+                    {hour}
+                  </span>
+                ))}
+                {days.map((row, index) => (
+                  <HeatRow
+                    key={DAYS[index] ?? index}
+                    label={DAYS[index] ?? ""}
+                    cells={row}
+                  />
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                {windows.caveat}
+              </p>
+            </Panel>
+          </>
+        )}
+      </AsyncRegion>
     </PulsePage>
   );
 }
@@ -536,7 +637,7 @@ const NEXT: Record<string, string> = {
 export function BacklogScreen() {
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<"search" | "trend">("search");
-  const query = useActionQuery("pulse-list-ideas", {});
+  const query = useActionQuery("pulse-list-ideas", {}, readOnce);
   const save = useActionMutation("pulse-upsert-idea");
   const ideas = ((query.data as { ideas?: Idea[] } | undefined)?.ideas ??
     []) as Idea[];
@@ -582,9 +683,14 @@ export function BacklogScreen() {
           Add
         </Button>
       </form>
-      {query.isPending ? (
-        <CardSkeleton />
-      ) : (
+      <AsyncRegion
+        pending={query.isPending}
+        isError={query.isError}
+        error={query.error}
+        onRetry={() => void query.refetch()}
+        label="Backlog"
+        skeleton={<CardSkeleton />}
+      >
         <ul className="grid gap-2">
           {ideas.map((idea) => (
             <li key={idea.id}>
@@ -610,7 +716,8 @@ export function BacklogScreen() {
                         id: idea.id,
                         title: idea.title,
                         status: NEXT[idea.status] as "filmed",
-                        assignee: idea.assignee === "hunter" ? "hunter" : "matt",
+                        assignee:
+                          idea.assignee === "hunter" ? "hunter" : "matt",
                         searchVsTrend: idea.searchVsTrend as "search",
                         dynoSafe: idea.dynoSafe,
                         pillar: idea.pillar,
@@ -624,7 +731,7 @@ export function BacklogScreen() {
             </li>
           ))}
         </ul>
-      )}
+      </AsyncRegion>
     </PulsePage>
   );
 }
@@ -638,8 +745,16 @@ type Audit = {
   medianViews: number | null;
   followerLikeHealthPct: number | null;
   followerLikeHealthy: boolean | null;
-  topicClusters: Array<{ topic: string; posts: number; avgViews: number | null }>;
-  ideasFromWinners: Array<{ title: string; note: string; views: number | null }>;
+  topicClusters: Array<{
+    topic: string;
+    posts: number;
+    avgViews: number | null;
+  }>;
+  ideasFromWinners: Array<{
+    title: string;
+    note: string;
+    views: number | null;
+  }>;
   cta: { pass: boolean; issues: string[] };
   bestSlots: Array<{ dayOfWeek: string; localTime: string; reason: string }>;
   latestPosts: Array<{ caption?: string | null; views?: number | null }>;
@@ -651,7 +766,7 @@ export function AuditScreen() {
   const [account, setAccount] = useState("");
   const [result, setResult] = useState<Audit | null>(null);
   const run = useActionMutation("pulse-audit-account");
-  const history = useActionQuery("pulse-list-audits", {});
+  const history = useActionQuery("pulse-list-audits", {}, readOnce);
   return (
     <PulsePage kicker="Audit" title="Page insights">
       <form
@@ -685,18 +800,26 @@ export function AuditScreen() {
       {result ? <AuditBody audit={result} /> : null}
       <Panel>
         <h2 className="text-sm font-medium">Saved</h2>
-        {history.isPending ? (
-          <div className="mt-3 h-8 animate-pulse rounded bg-muted" />
-        ) : (
+        <AsyncRegion
+          pending={history.isPending}
+          isError={history.isError}
+          error={history.error}
+          onRetry={() => void history.refetch()}
+          label="Saved audits"
+          skeleton={<div className="mt-3 h-8 animate-pulse rounded bg-muted" />}
+        >
           <ul className="mt-2 space-y-1 text-sm">
             {(
-              (history.data as { audits?: Array<{ id: string; handle: string }> })
-                ?.audits ?? []
+              (
+                history.data as {
+                  audits?: Array<{ id: string; handle: string }>;
+                }
+              )?.audits ?? []
             ).map((row) => (
               <li key={row.id}>@{row.handle}</li>
             ))}
           </ul>
-        )}
+        </AsyncRegion>
       </Panel>
     </PulsePage>
   );
@@ -707,13 +830,17 @@ function AuditBody({ audit }: { audit: Audit }) {
     <div className="grid gap-3">
       <Panel>
         <h2 className="text-sm font-medium">@{audit.handle}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{audit.methodology}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {audit.methodology}
+        </p>
         {audit.foundInPulse ? (
           <MetaLine
             items={[
               audit.followers != null ? `${audit.followers} followers` : null,
               audit.totalLikes != null ? `${audit.totalLikes} likes` : null,
-              audit.medianViews != null ? `median views ${Math.round(audit.medianViews)}` : null,
+              audit.medianViews != null
+                ? `median views ${Math.round(audit.medianViews)}`
+                : null,
               audit.followerLikeHealthPct != null
                 ? `followers÷likes ${audit.followerLikeHealthPct}% (target ${FOLLOWER_LIKE_TARGET_PCT}%)`
                 : null,
@@ -752,7 +879,9 @@ function AuditBody({ audit }: { audit: Audit }) {
       <Panel>
         <h2 className="text-sm font-medium">CTA check</h2>
         <p className="mt-2 text-sm">
-          {audit.cta.pass ? "Outcome CTAs look fine." : audit.cta.issues.join(" ")}
+          {audit.cta.pass
+            ? "Outcome CTAs look fine."
+            : audit.cta.issues.join(" ")}
         </p>
       </Panel>
       <Panel>
@@ -809,22 +938,36 @@ export function InboxScreen() {
   const [json, setJson] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const ingest = useActionMutation("pulse-ingest-from-drive");
-  const status = useActionQuery("pulse-ingest-status", {});
+  const status = useActionQuery("pulse-ingest-status", {}, readOnce);
   return (
     <PulsePage kicker="Inbox" title="Brandbot drop">
       <Panel>
         <p className="text-sm">
           Preferred path is POST{" "}
-          <code className="text-xs">/pulse/_agent-native/actions/pulse-ingest</code>{" "}
+          <code className="text-xs">
+            /pulse/_agent-native/actions/pulse-ingest
+          </code>{" "}
           with <code className="text-xs">Authorization: Bearer</code> the vault
           secret. Until that is live, paste{" "}
-          <code className="text-xs">pulse-{"{date}"}-{"{source}"}.json</code> here.
-          Pulse does not download Drive files.
+          <code className="text-xs">
+            pulse-{"{date}"}-{"{source}"}.json
+          </code>{" "}
+          here. Pulse does not download Drive files.
         </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          {(status.data as { summary?: string } | undefined)?.summary ??
-            "Checking ingest status…"}
-        </p>
+        <AsyncRegion
+          pending={status.isPending}
+          isError={status.isError}
+          error={status.error}
+          onRetry={() => void status.refetch()}
+          label="Ingest status"
+          skeleton={
+            <div className="mt-2 h-4 w-64 animate-pulse rounded bg-muted" />
+          }
+        >
+          <p className="mt-2 text-xs text-muted-foreground">
+            {(status.data as { summary?: string } | undefined)?.summary}
+          </p>
+        </AsyncRegion>
       </Panel>
       <form
         className="grid gap-2"
@@ -859,7 +1002,7 @@ export function InboxScreen() {
 }
 
 export function AdminScreen() {
-  const settings = useActionQuery("pulse-get-settings", {});
+  const settings = useActionQuery("pulse-get-settings", {}, readOnce);
   const save = useActionMutation("pulse-set-settings");
   const data = settings.data as
     | {
@@ -871,9 +1014,14 @@ export function AdminScreen() {
     | undefined;
   return (
     <PulsePage kicker="Admin" title="Dyno lock">
-      {settings.isPending ? (
-        <CardSkeleton />
-      ) : (
+      <AsyncRegion
+        pending={settings.isPending}
+        isError={settings.isError}
+        error={settings.error}
+        onRetry={() => void settings.refetch()}
+        label="Dyno lock"
+        skeleton={<CardSkeleton />}
+      >
         <Panel>
           <p className="text-sm">{data?.summary}</p>
           <p className="mt-2 text-xs text-muted-foreground">
@@ -905,7 +1053,7 @@ export function AdminScreen() {
             </p>
           )}
         </Panel>
-      )}
+      </AsyncRegion>
     </PulsePage>
   );
 }
