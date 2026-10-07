@@ -13,8 +13,10 @@ vi.mock("@agent-native/core/client/hooks", () => ({
 
 import { callAction } from "@agent-native/core/client/hooks";
 
+import { signParts } from "../../../../packages/object-storage/src/index.ts";
 import {
   BROWSER_MAX_PART_BYTES as serverMaxPartBytes,
+  browserPartUrlProblem,
   isMissingMultipartUpload,
   planParts,
 } from "../../../../packages/object-storage/src/parts.ts";
@@ -25,9 +27,11 @@ import {
   normalizeStoredParts,
   PART_CONCURRENCY,
   partByteRange,
+  partConcurrencyFor,
   partUploadError,
   resumeDumpFile,
   runMultipartUpload,
+  SERIAL_UPLOAD_BYTES,
   shouldRetryPartStatus,
   transferErrorMessage,
 } from "./dump-transfer";
@@ -130,6 +134,50 @@ describe("transfer errors", () => {
     expect(partUploadError(0, "", false)).toMatch(/closed the connection/i);
   });
 
+  it("rejects a part URL that carries an empty checksum", () => {
+    const url =
+      "https://bucket.s3.us-east-005.backblazeb2.com/key?partNumber=1&x-amz-checksum-crc32=AAAAAA%3D%3D&x-amz-sdk-checksum-algorithm=CRC32";
+    expect(browserPartUrlProblem(url)).toMatch(/checksum/i);
+    expect(
+      browserPartUrlProblem(
+        "https://bucket.s3.us-east-005.backblazeb2.com/key?partNumber=1&X-Amz-SignedHeaders=host",
+      ),
+    ).toBeNull();
+  });
+
+  it("signs part URLs the browser can PUT", async () => {
+    const previousId = process.env.B2_KEY_ID;
+    const previousKey = process.env.B2_APPLICATION_KEY;
+    process.env.B2_KEY_ID = "TESTKEYID";
+    process.env.B2_APPLICATION_KEY = "testsecret";
+    try {
+      const parts = await signParts({
+        key: "org/example/files/id/clip.mp4",
+        uploadId: "upload-id",
+        partNumbers: [1],
+      });
+      const url = new URL(parts[0]?.url ?? "");
+      expect(browserPartUrlProblem(url.toString())).toBeNull();
+      expect(url.searchParams.get("X-Amz-SignedHeaders")).toBe("host");
+      expect(url.searchParams.get("X-Amz-Content-Sha256")).toBe(
+        "UNSIGNED-PAYLOAD",
+      );
+      expect(url.searchParams.has("x-amz-checksum-crc32")).toBe(false);
+      expect(url.searchParams.has("x-amz-sdk-checksum-algorithm")).toBe(false);
+    } finally {
+      if (previousId === undefined) delete process.env.B2_KEY_ID;
+      else process.env.B2_KEY_ID = previousId;
+      if (previousKey === undefined) delete process.env.B2_APPLICATION_KEY;
+      else process.env.B2_APPLICATION_KEY = previousKey;
+    }
+  });
+
+  it("uploads one part at a time once the file reaches 1 GiB", () => {
+    expect(partConcurrencyFor(SERIAL_UPLOAD_BYTES - 1)).toBe(PART_CONCURRENCY);
+    expect(partConcurrencyFor(13 * 1000 ** 3)).toBe(1);
+    expect(partConcurrencyFor(16 * 1024 ** 3)).toBe(1);
+  });
+
   it("recognizes a missing multipart session", () => {
     expect(
       isMissingMultipartUpload(
@@ -148,6 +196,148 @@ describe("transfer errors", () => {
 describe("multipart resume", () => {
   beforeEach(() => {
     call.mockReset();
+  });
+
+  it("puts the file slice without adding a content type", async () => {
+    const file = new File([new Uint8Array(10)], "clip.mp4", {
+      type: "video/mp4",
+    });
+    let contentType = "unset";
+    await runMultipartUpload({
+      id: "typed",
+      file,
+      partSize: 10,
+      partCount: 1,
+      done: new Map(),
+      signal: new AbortController().signal,
+      onProgress: () => undefined,
+      sign: async (partNumbers) =>
+        partNumbers.map((partNumber) => ({
+          partNumber,
+          url: "https://b2.test/1",
+        })),
+      put: async (_url, body) => {
+        contentType = body.type;
+        expect(body.size).toBe(10);
+        return '"etag"';
+      },
+      complete: async () => undefined,
+    });
+    expect(contentType).toBe("");
+  });
+
+  it("keeps a part whose response never reached the browser", async () => {
+    const file = new File([new Uint8Array(20)], "clip.mp4");
+    call.mockImplementation(async (name) => {
+      if (name === "list-dump-parts") {
+        return {
+          id: "file-landed",
+          parts: [{ partNumber: 1, etag: '"landed"' }],
+        };
+      }
+      throw new Error(`unexpected ${String(name)}`);
+    });
+    let puts = 0;
+    await runMultipartUpload({
+      id: "file-landed",
+      file,
+      partSize: 20,
+      partCount: 1,
+      done: new Map(),
+      signal: new AbortController().signal,
+      onProgress: () => undefined,
+      sign: async (partNumbers) =>
+        partNumbers.map((partNumber) => ({
+          partNumber,
+          url: "https://b2.test/1",
+        })),
+      put: async () => {
+        puts += 1;
+        throw Object.assign(new Error("closed"), { status: 0 });
+      },
+      complete: async (parts) => {
+        expect(parts).toEqual([{ partNumber: 1, etag: '"landed"' }]);
+      },
+    });
+    expect(puts).toBe(1);
+  });
+
+  it("adopts a stored part when the real PUT cannot read a response", async () => {
+    const file = new File([new Uint8Array(20)], "clip.mp4", {
+      type: "video/mp4",
+    });
+    call.mockImplementation(async (name, params) => {
+      if (name === "sign-dump-parts") {
+        const partNumbers = (params as { partNumbers: number[] }).partNumbers;
+        return {
+          parts: partNumbers.map((partNumber) => ({
+            partNumber,
+            url: `https://b2.test/${partNumber}`,
+          })),
+        };
+      }
+      if (name === "list-dump-parts") {
+        return {
+          id: "file-xhr",
+          parts: [{ partNumber: 1, etag: '"from-list"' }],
+        };
+      }
+      if (name === "complete-dump-upload") {
+        const parts = (
+          params as { parts: Array<{ partNumber: number; etag: string }> }
+        ).parts;
+        expect(parts).toEqual([{ partNumber: 1, etag: '"from-list"' }]);
+        return { id: "file-xhr" };
+      }
+      throw new Error(`unexpected ${String(name)}`);
+    });
+    const original = globalThis.XMLHttpRequest;
+    class FakeXhr {
+      status = 0;
+      responseText = "";
+      timeout = 0;
+      upload = { onprogress: (_event: ProgressEvent) => undefined };
+      private errorHandler: (() => void) | null = null;
+      open() {}
+      set responseType(_value: string) {}
+      set withCredentials(_value: boolean) {}
+      addEventListener() {}
+      getResponseHeader() {
+        return null;
+      }
+      send(body: Blob) {
+        expect(body.type).toBe("");
+        expect(body.size).toBe(20);
+        this.errorHandler?.();
+      }
+      set onload(_handler: () => void) {}
+      set onerror(handler: () => void) {
+        this.errorHandler = handler;
+      }
+      set ontimeout(_handler: () => void) {}
+      set onabort(_handler: () => void) {}
+      abort() {}
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXhr);
+    try {
+      await runMultipartUpload({
+        id: "file-xhr",
+        file,
+        partSize: 20,
+        partCount: 1,
+        done: new Map(),
+        signal: new AbortController().signal,
+        onProgress: () => undefined,
+      });
+      expect(call.mock.calls.map((entry) => entry[0])).toEqual([
+        "sign-dump-parts",
+        "list-dump-parts",
+        "complete-dump-upload",
+      ]);
+    } finally {
+      if (original) vi.stubGlobal("XMLHttpRequest", original);
+      else vi.unstubAllGlobals();
+    }
   });
 
   it("uploads only missing parts and completes with the stored ETags", async () => {
