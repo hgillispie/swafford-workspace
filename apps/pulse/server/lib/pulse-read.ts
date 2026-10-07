@@ -1,5 +1,7 @@
 import { and, desc, eq } from "@agent-native/core/db/schema";
 
+import { SEED_KEYWORDS } from "../../shared/pulse-guardrails.js";
+import type { PulseRecreateCard } from "../../shared/pulse-schema.js";
 import { getDb } from "../db/index.js";
 import {
   pulseCompetitors,
@@ -9,8 +11,6 @@ import {
   pulseReports,
   pulseTrends,
 } from "../db/schema.js";
-import { SEED_KEYWORDS } from "../../shared/pulse-guardrails.js";
-import type { PulseRecreateCard } from "../../shared/pulse-schema.js";
 
 export function parseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -120,7 +120,21 @@ export async function latestReport(orgId: string) {
   return (
     (
       await db
-        .select()
+        .select({
+          id: pulseReports.id,
+          reportDate: pulseReports.reportDate,
+          source: pulseReports.source,
+          headline: pulseReports.headline,
+          mattBlurb: pulseReports.mattBlurb,
+          methodology: pulseReports.methodology,
+          pdfDriveFileId: pulseReports.pdfDriveFileId,
+          pdfDriveUrl: pulseReports.pdfDriveUrl,
+          dataGapsJson: pulseReports.dataGapsJson,
+          localNotes: pulseReports.localNotes,
+          effectiveDynoUnlocked: pulseReports.effectiveDynoUnlocked,
+          payloadDynoUnlocked: pulseReports.payloadDynoUnlocked,
+          createdAt: pulseReports.createdAt,
+        })
         .from(pulseReports)
         .where(eq(pulseReports.orgId, orgId))
         .orderBy(desc(pulseReports.reportDate), desc(pulseReports.createdAt))
@@ -275,7 +289,9 @@ export async function listTrends(orgId: string, reportId: string | null) {
   const rows = await db
     .select()
     .from(pulseTrends)
-    .where(and(eq(pulseTrends.orgId, orgId), eq(pulseTrends.reportId, reportId)));
+    .where(
+      and(eq(pulseTrends.orgId, orgId), eq(pulseTrends.reportId, reportId)),
+    );
   return rows.map((row) => ({
     id: row.id,
     kind: row.kind,

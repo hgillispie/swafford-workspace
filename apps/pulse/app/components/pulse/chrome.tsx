@@ -1,9 +1,14 @@
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { useActionMutation } from "@agent-native/core/client/hooks";
+import {
+  actionErrorMessage,
+  useActionMutation,
+} from "@agent-native/core/client/hooks";
 import { IconCopy } from "@tabler/icons-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { PULSE_QUERY_SETTLE_MS, pulseAsyncPhase } from "@/lib/pulse-async";
+import { cn } from "@/lib/utils";
 
 export function PulsePage({
   kicker,
@@ -23,13 +28,72 @@ export function PulsePage({
           <p className="text-xs font-medium uppercase tracking-[0.14em] text-primary">
             {kicker}
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{title}</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+            {title}
+          </h1>
         </div>
         {action}
       </header>
       {children}
     </div>
   );
+}
+
+function usePulseQueryStall(pending: boolean) {
+  const [stalled, setStalled] = useState(false);
+  useEffect(() => {
+    if (!pending) {
+      setStalled(false);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setStalled(true),
+      PULSE_QUERY_SETTLE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [pending]);
+  return stalled;
+}
+
+export function AsyncRegion({
+  pending,
+  isError,
+  error,
+  onRetry,
+  label,
+  skeleton,
+  children,
+}: {
+  pending: boolean;
+  isError: boolean;
+  error: unknown;
+  onRetry: () => void;
+  label: string;
+  skeleton: ReactNode;
+  children: ReactNode;
+}) {
+  const stalled = usePulseQueryStall(pending);
+  const phase = pulseAsyncPhase({ pending, stalled, isError });
+  if (phase === "loading") return skeleton;
+  if (phase === "error") {
+    return (
+      <Panel>
+        <p className="text-sm">
+          {actionErrorMessage(error) ?? `${label} didn't load.`}
+        </p>
+        <Button
+          className="mt-3"
+          size="sm"
+          variant="outline"
+          type="button"
+          onClick={onRetry}
+        >
+          Retry
+        </Button>
+      </Panel>
+    );
+  }
+  return children;
 }
 
 export function CardSkeleton() {
