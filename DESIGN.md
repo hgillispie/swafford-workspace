@@ -18,7 +18,7 @@ making every app look cloned.
 
 | App | Mode | Direction | Palette family |
 | --- | ---- | --------- | -------------- |
-|     |      |           |                |
+| Pulse | operate | Shop steel bay | Cool graphite surfaces, one brass hardware accent |
 
 ## App direction rule
 

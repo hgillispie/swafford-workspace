@@ -52,7 +52,8 @@
         "plan",
         "dumps",
         "cutline",
-        "opus"
+        "opus",
+        "pulse"
       ]
     }
   }

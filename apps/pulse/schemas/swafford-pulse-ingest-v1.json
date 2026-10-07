@@ -1,0 +1,1178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swaffordspeed.com/schemas/swafford-pulse-ingest-v1.json",
+  "title": "SwaffordPulseIngestV1",
+  "description": "Brandbot \u2192 Swafford Pulse biweekly (then more frequent) pulse ingest payload. Idempotent on (reportDate, source). schemaVersion must be \"1.0\".",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "reportDate",
+    "source",
+    "generatedAt",
+    "timezone",
+    "brand",
+    "summary",
+    "performers",
+    "upAndComers",
+    "aheadOfCurve",
+    "localGeo",
+    "keywords",
+    "trendingTerms",
+    "competitors",
+    "recreateCards",
+    "postingWindows",
+    "dataGaps",
+    "growthPrincipleTags"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Bump major only on breaking field changes. Minor additive fields stay on 1.x with optional properties."
+    },
+    "reportDate": {
+      "type": "string",
+      "format": "date",
+      "description": "Calendar date of the pulse (America/New_York). Part of idempotency key with source."
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "tiktok",
+        "youtube"
+      ],
+      "description": "Platform this pulse covers. TikTok-first for v1."
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when Brandbot finished assembling this payload."
+    },
+    "timezone": {
+      "type": "string",
+      "const": "America/New_York",
+      "description": "All local posting windows and human dates are interpreted in this zone."
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "description": "Optional explicit key. Server defaults to `${reportDate}:${source}` when omitted.",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}:(tiktok|youtube)$"
+    },
+    "brand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "geo",
+        "dynoUnlocked"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "const": "Swafford Speed"
+        },
+        "handle": {
+          "type": "string",
+          "description": "Own account handle without @, e.g. swaffordspeed"
+        },
+        "geo": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "upstate_sc",
+              "wnc",
+              "east_tn",
+              "national"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "dynoUnlocked": {
+          "type": "boolean",
+          "description": "When false, all generated copy and recreate cards must stay dyno-safe (no dyno hero claims)."
+        },
+        "softCtaPresets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Allowed outcome CTAs for this pulse (book work, performance-ready bike, local trust)."
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headline",
+        "mattBlurb",
+        "hunterNotes"
+      ],
+      "properties": {
+        "headline": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "mattBlurb": {
+          "type": "string",
+          "maxLength": 480,
+          "description": "2\u20134 sentence skim for Matt; no PDF required."
+        },
+        "hunterNotes": {
+          "type": "string",
+          "description": "Deeper notes, data caveats, methodology."
+        },
+        "windowDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "default": 14
+        },
+        "pdfDriveFileId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Google Drive file id for the human PDF. App is SoT; PDF is share artifact only."
+        },
+        "pdfDriveUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "xlsxDriveFileId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "methodology": {
+          "type": "string",
+          "description": "Honest source note, e.g. public grid / yt-dlp / Research API / commercial API."
+        }
+      }
+    },
+    "performers": {
+      "type": "array",
+      "description": "Top performing accounts / breakout creators in-niche this window.",
+      "items": {
+        "$ref": "#/$defs/competitorSnapshot"
+      }
+    },
+    "upAndComers": {
+      "type": "array",
+      "description": "Rising accounts worth watching (growth rate, not absolute size).",
+      "items": {
+        "$ref": "#/$defs/competitorSnapshot"
+      }
+    },
+    "aheadOfCurve": {
+      "type": "array",
+      "description": "Formats or topics that look early \u2014 worth filming before they saturate.",
+      "items": {
+        "$ref": "#/$defs/trendItem"
+      }
+    },
+    "localGeo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "upstateSc",
+        "wnc",
+        "notes"
+      ],
+      "properties": {
+        "upstateSc": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/competitorSnapshot"
+          }
+        },
+        "wnc": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/competitorSnapshot"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "keywords": {
+      "type": "array",
+      "description": "Search-demand oriented keywords with proxies and example videos.",
+      "items": {
+        "$ref": "#/$defs/keywordItem"
+      }
+    },
+    "trendingTerms": {
+      "type": "array",
+      "description": "Short-half-life trend terms with ranking example videos.",
+      "items": {
+        "$ref": "#/$defs/trendItem"
+      }
+    },
+    "competitors": {
+      "type": "array",
+      "description": "North-star + discovered competitor snapshots (Mickey, BertsHarley, Doc Harley, Kruesi, locals).",
+      "items": {
+        "$ref": "#/$defs/competitorSnapshot"
+      }
+    },
+    "videos": {
+      "type": "array",
+      "description": "Optional flat list of notable videos referenced across sections (dedupe by platformVideoId).",
+      "items": {
+        "$ref": "#/$defs/videoRef"
+      }
+    },
+    "recreateCards": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 12,
+      "description": "Shoot-ready recreate briefs for Matt (v1 target: 2\u20134 primary).",
+      "items": {
+        "$ref": "#/$defs/recreateCard"
+      }
+    },
+    "postingWindows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timezone",
+        "recommendedSlots",
+        "heatmapProxy",
+        "caveat"
+      ],
+      "properties": {
+        "timezone": {
+          "type": "string",
+          "const": "America/New_York"
+        },
+        "recommendedSlots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "dayOfWeek",
+              "localTime",
+              "reason"
+            ],
+            "properties": {
+              "dayOfWeek": {
+                "type": "string",
+                "enum": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat",
+                  "sun"
+                ]
+              },
+              "localTime": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+                "description": "HH:MM in America/New_York"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "competitor_heatmap",
+                  "own_analytics",
+                  "niche_proxy",
+                  "manual"
+                ]
+              }
+            }
+          }
+        },
+        "heatmapProxy": {
+          "type": "object",
+          "description": "7\u00d724 intensity grid 0\u20131 or null cells. Indexes: day 0=Mon \u2026 6=Sun; hour 0\u201323 ET.",
+          "additionalProperties": false,
+          "required": [
+            "days"
+          ],
+          "properties": {
+            "days": {
+              "type": "array",
+              "minItems": 7,
+              "maxItems": 7,
+              "items": {
+                "type": "array",
+                "minItems": 24,
+                "maxItems": 24,
+                "items": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            },
+            "basis": {
+              "type": "string",
+              "description": "What the proxy was derived from."
+            }
+          }
+        },
+        "caveat": {
+          "type": "string",
+          "description": "Always note first ~300\u20131000 views decide push; wrong early audience kills reach."
+        }
+      }
+    },
+    "dataGaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "private_account",
+              "user_not_found",
+              "views_unavailable",
+              "rate_limited",
+              "tos_block",
+              "api_missing",
+              "geo_thin",
+              "dyno_locked",
+              "other"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "affectedHandles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "growthPrincipleTags": {
+      "type": "array",
+      "description": "Tags this pulse emphasizes so UI/generators stay aligned with YT growth principles.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "mix_50_50_trend_search",
+          "metadata_stack",
+          "edit_cadence_3_5s",
+          "outcome_cta",
+          "best_time_windows",
+          "follower_health_15pct",
+          "first_hour_replies",
+          "keyword_in_first_second",
+          "local_geo_tags",
+          "dyno_safe"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "exportsHints": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional hints for paste-ready CapCut / Descript packs. Pulse feeds real Descript+CapCut tools \u2014 does not imply in-app clone editors.",
+      "properties": {
+        "defaultStack": {
+          "type": "string",
+          "const": "dji_studio_descript_capcut",
+          "description": "Locked capture/edit path: DJI Studio \u2192 Descript \u2192 CapCut. Human pastes Pulse briefs into those tools."
+        },
+        "opusOptional": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "searchVsTrend": {
+      "type": "string",
+      "enum": [
+        "search",
+        "trend",
+        "hybrid"
+      ],
+      "description": "search = evergreen demand; trend = short half-life; hybrid = both."
+    },
+    "pillar": {
+      "type": "string",
+      "enum": [
+        "performance_build",
+        "electrical_diagnosis",
+        "older_harley_repair",
+        "bagger_exhaust",
+        "sportster_chopper",
+        "road_glide_dyna",
+        "shop_culture",
+        "local_geo",
+        "customer_outcome",
+        "tool_tip",
+        "other"
+      ]
+    },
+    "videoRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform",
+        "url",
+        "handle"
+      ],
+      "properties": {
+        "platform": {
+          "type": "string",
+          "enum": [
+            "tiktok",
+            "youtube"
+          ]
+        },
+        "platformVideoId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "handle": {
+          "type": "string",
+          "description": "Creator handle without @"
+        },
+        "caption": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "postedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "views": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "likes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "comments": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "durationSec": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "soundName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outlierScore": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "views / account median views when known; null if unknown."
+        },
+        "searchVsTrend": {
+          "$ref": "#/$defs/searchVsTrend"
+        },
+        "geo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "upstate_sc",
+            "wnc",
+            "east_tn",
+            "national",
+            null
+          ]
+        },
+        "dynoSafe": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "competitorSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handle",
+        "role",
+        "followers",
+        "sample"
+      ],
+      "properties": {
+        "handle": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "north_star",
+            "performer",
+            "up_and_comer",
+            "local",
+            "regional",
+            "format_reference",
+            "own_account"
+          ]
+        },
+        "followers": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "followersPrev": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "totalLikes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "videoCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "postsPerWeek": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "medianViews": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "maxViews": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "daysSinceLastPost": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "followerLikeHealthPct": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Approx follower\u00f7likes * 100 when computable; coach toward \u226515% via outcome CTAs.",
+          "minimum": 0
+        },
+        "geo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "upstate_sc",
+            "wnc",
+            "east_tn",
+            "national",
+            null
+          ]
+        },
+        "hookPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ctaPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "soundNotes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sample": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "n",
+            "method"
+          ],
+          "properties": {
+            "n": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "dateRange": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "method": {
+              "type": "string",
+              "enum": [
+                "public_grid",
+                "yt_dlp",
+                "research_api",
+                "commercial_api",
+                "manual",
+                "mixed"
+              ]
+            }
+          }
+        },
+        "topVideos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/videoRef"
+          },
+          "maxItems": 10
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "keywordItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "term",
+        "intent",
+        "searchVsTrend",
+        "dynoSafe",
+        "pillar"
+      ],
+      "properties": {
+        "term": {
+          "type": "string"
+        },
+        "related": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "volumeProxy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "very_high",
+            "high",
+            "medium",
+            "low",
+            "unknown",
+            null
+          ]
+        },
+        "competitionProxy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "very_high",
+            "high",
+            "medium",
+            "low",
+            "unknown",
+            null
+          ]
+        },
+        "intent": {
+          "type": "string",
+          "enum": [
+            "informational",
+            "how_to",
+            "local_shop",
+            "product",
+            "entertainment",
+            "mixed"
+          ]
+        },
+        "searchVsTrend": {
+          "$ref": "#/$defs/searchVsTrend"
+        },
+        "geo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "upstate_sc",
+            "wnc",
+            "east_tn",
+            "national",
+            null
+          ]
+        },
+        "dynoSafe": {
+          "type": "boolean"
+        },
+        "pillar": {
+          "$ref": "#/$defs/pillar"
+        },
+        "evergreen": {
+          "type": "boolean",
+          "default": true
+        },
+        "exampleVideos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/videoRef"
+          },
+          "maxItems": 5
+        },
+        "seedLibrary": {
+          "type": "boolean",
+          "default": false,
+          "description": "True if this term is part of the durable Swafford seed library."
+        }
+      }
+    },
+    "trendItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "classification",
+        "searchVsTrend",
+        "dynoSafe"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "classification": {
+          "type": "string",
+          "enum": [
+            "mega_trend",
+            "flash_24_72h",
+            "format",
+            "sound",
+            "topic"
+          ]
+        },
+        "halfLifeDays": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "searchVsTrend": {
+          "$ref": "#/$defs/searchVsTrend"
+        },
+        "geo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "upstate_sc",
+            "wnc",
+            "east_tn",
+            "national",
+            null
+          ]
+        },
+        "dynoSafe": {
+          "type": "boolean"
+        },
+        "pillar": {
+          "$ref": "#/$defs/pillar"
+        },
+        "exampleVideos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/videoRef"
+          },
+          "maxItems": 5
+        },
+        "whyNow": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "cameraNotes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primary",
+        "notes"
+      ],
+      "properties": {
+        "primary": {
+          "type": "string",
+          "enum": [
+            "pocket4",
+            "osmo360",
+            "both",
+            "phone_backup"
+          ]
+        },
+        "pocket4": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "osmo360": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "micMini": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clapSync": {
+          "type": "boolean",
+          "default": true
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "capCutScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "order",
+        "durationSec",
+        "visual",
+        "onScreen"
+      ],
+      "properties": {
+        "order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "durationSec": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "visual": {
+          "type": "string"
+        },
+        "onScreen": {
+          "type": "string"
+        },
+        "vo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brollSlot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sfxOrSound": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "recreateCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cardId",
+        "title",
+        "hook",
+        "onScreenText",
+        "captionLine1",
+        "hashtags",
+        "capCutSceneOutline",
+        "cameraNotes",
+        "dynoSafe",
+        "pillar",
+        "searchVsTrend",
+        "softCta",
+        "growthPrincipleTags"
+      ],
+      "properties": {
+        "cardId": {
+          "type": "string",
+          "description": "Stable within report, e.g. recreate-cam-sound-01. Used for backlog upsert."
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "inspiredBy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/videoRef"
+          },
+          "description": "Format references only \u2014 recreate = original Swafford shoot, never ripped footage.",
+          "maxItems": 5
+        },
+        "hook": {
+          "type": "string",
+          "description": "Spoken + on-screen keyword hook for first ~1s."
+        },
+        "onScreenText": {
+          "type": "string",
+          "description": "Red or white/black text hook line."
+        },
+        "spokenKeywordFirstSecond": {
+          "type": "string"
+        },
+        "captionLine1": {
+          "type": "string",
+          "description": "First caption line = keyword stack start."
+        },
+        "captionBody": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hashtags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^#?[A-Za-z0-9_]+$"
+          },
+          "minItems": 3,
+          "maxItems": 8,
+          "description": "3\u20136 keyword hashtags + local tags preferred."
+        },
+        "inviteKeywordComment": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Prompt inviting keyword-rich comments."
+        },
+        "scriptBeats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Short VO / dirty-scratch narration beats."
+        },
+        "capCutSceneOutline": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/capCutScene"
+          },
+          "minItems": 3,
+          "maxItems": 12,
+          "description": "Scene change every ~3\u20135s (up to ~7); outcome CTA last 2\u20133s."
+        },
+        "descriptChapters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "title",
+              "vo"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "vo": {
+                "type": "string"
+              },
+              "broll": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "description": "Optional Descript paste beats (chapter title + VO + B-roll). For clipboard/markdown export into real Descript \u2014 not a clone UI."
+        },
+        "cameraNotes": {
+          "$ref": "#/$defs/cameraNotes"
+        },
+        "soundSuggestion": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Motorcycle-safe: don't bury exhaust; prefer native bike sound when relevant."
+        },
+        "dynoSafe": {
+          "type": "boolean"
+        },
+        "pillar": {
+          "$ref": "#/$defs/pillar"
+        },
+        "searchVsTrend": {
+          "$ref": "#/$defs/searchVsTrend"
+        },
+        "geo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "upstate_sc",
+            "wnc",
+            "east_tn",
+            "national",
+            null
+          ]
+        },
+        "assignee": {
+          "type": "string",
+          "enum": [
+            "matt",
+            "hunter",
+            "either"
+          ],
+          "default": "matt"
+        },
+        "softCta": {
+          "type": "string",
+          "description": "Outcome CTA last 2\u20133s. Ban empty 'follow for more' and dyno claims while locked."
+        },
+        "estimatedSeconds": {
+          "type": "integer",
+          "minimum": 15,
+          "maximum": 90
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "this_week",
+            "next_window",
+            "backlog"
+          ],
+          "default": "this_week"
+        },
+        "growthPrincipleTags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "mix_50_50_trend_search",
+              "metadata_stack",
+              "edit_cadence_3_5s",
+              "outcome_cta",
+              "best_time_windows",
+              "follower_health_15pct",
+              "first_hour_replies",
+              "keyword_in_first_second",
+              "local_geo_tags",
+              "dyno_safe"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

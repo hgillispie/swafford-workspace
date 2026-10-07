@@ -1,0 +1,683 @@
+{
+  "schemaVersion": "1.0",
+  "reportDate": "2026-10-05",
+  "source": "tiktok",
+  "generatedAt": "2026-10-05T14:46:00-04:00",
+  "timezone": "America/New_York",
+  "idempotencyKey": "2026-10-05:tiktok",
+  "brand": {
+    "name": "Swafford Speed",
+    "handle": "swaffordspeed",
+    "geo": [
+      "upstate_sc",
+      "wnc"
+    ],
+    "dynoUnlocked": false,
+    "softCtaPresets": [
+      "Book performance work \u2014 link in bio",
+      "Upstate SC / WNC Harley performance & repair"
+    ]
+  },
+  "summary": {
+    "headline": "Cam-sound older bikes + tool explainers still outperforming polish",
+    "mattBlurb": "Three shoot cards this week: Twin Cam sound on an older bike, a water-pump explainer, and one local Greenville shop trust clip. Hooks and CapCut outlines are ready \u2014 Pocket 4 A-cam, Mic Mini, clap sync.",
+    "hunterNotes": "Public grid readable this run (unlike Oct 3). Mickey sample n=30; others n=20. No login.",
+    "windowDays": 14,
+    "pdfDriveFileId": null,
+    "methodology": "Public profile HTML + public video grid (no login). Not TikTok Research API."
+  },
+  "performers": [
+    {
+      "handle": "mickeycohenmotorsports",
+      "displayName": "Mickey Cohen Motorsports",
+      "role": "north_star",
+      "followers": 72831,
+      "followersPrev": 73000,
+      "totalLikes": 856958,
+      "videoCount": 745,
+      "postsPerWeek": 3.9,
+      "medianViews": 28500,
+      "maxViews": 252900,
+      "daysSinceLastPost": 3,
+      "geo": "national",
+      "hookPatterns": [
+        "tool close-up first",
+        "older bike sound cold open"
+      ],
+      "ctaPatterns": [
+        "soft shop CTA",
+        "no empty follow"
+      ],
+      "sample": {
+        "n": 30,
+        "dateRange": "2026-08-09 to 2026-10-02",
+        "method": "public_grid"
+      },
+      "topVideos": [
+        {
+          "platform": "tiktok",
+          "platformVideoId": "7680341397030915341",
+          "url": "https://www.tiktok.com/@mickeycohenmotorsports/video/7680341397030915341",
+          "handle": "mickeycohenmotorsports",
+          "caption": "Who says a twin cam can\u2019t be a performance Harley Davidson!!!??",
+          "views": 37000,
+          "likes": 1797,
+          "searchVsTrend": "search",
+          "dynoSafe": true
+        }
+      ],
+      "notes": "National north star \u2014 format only, not footage."
+    }
+  ],
+  "upAndComers": [
+    {
+      "handle": "that_z900_dude",
+      "role": "up_and_comer",
+      "followers": 7034,
+      "followersPrev": 6998,
+      "postsPerWeek": 9.3,
+      "medianViews": 599.5,
+      "maxViews": 1563,
+      "geo": "upstate_sc",
+      "sample": {
+        "n": 20,
+        "dateRange": "2026-09-16 to 2026-10-01",
+        "method": "public_grid"
+      },
+      "topVideos": []
+    }
+  ],
+  "aheadOfCurve": [
+    {
+      "label": "Older Twin Cam sound cold-open",
+      "classification": "format",
+      "halfLifeDays": 21,
+      "searchVsTrend": "hybrid",
+      "dynoSafe": true,
+      "pillar": "older_harley_repair",
+      "whyNow": "Still outlier vs polished walkarounds; locals thin on this format.",
+      "exampleVideos": []
+    }
+  ],
+  "localGeo": {
+    "upstateSc": [],
+    "wnc": [
+      {
+        "handle": "rev_moto_nc",
+        "role": "local",
+        "followers": 3439,
+        "postsPerWeek": 4.4,
+        "medianViews": 632,
+        "maxViews": 9627,
+        "geo": "wnc",
+        "sample": {
+          "n": 20,
+          "dateRange": "2026-09-01 to 2026-10-03",
+          "method": "public_grid"
+        },
+        "topVideos": []
+      }
+    ],
+    "notes": "Local competition thin \u2014 geo tags and Greenville/Asheville language matter."
+  },
+  "keywords": [
+    {
+      "term": "Harley shop Greenville",
+      "related": [
+        "Harley repair Greenville SC",
+        "motorcycle shop Upstate SC"
+      ],
+      "volumeProxy": "medium",
+      "competitionProxy": "low",
+      "intent": "local_shop",
+      "searchVsTrend": "search",
+      "geo": "upstate_sc",
+      "dynoSafe": true,
+      "pillar": "local_geo",
+      "evergreen": true,
+      "seedLibrary": true,
+      "exampleVideos": []
+    },
+    {
+      "term": "Sportster chopper build",
+      "related": [
+        "Evo chopper",
+        "Harley chopper shop"
+      ],
+      "volumeProxy": "high",
+      "competitionProxy": "medium",
+      "intent": "how_to",
+      "searchVsTrend": "search",
+      "dynoSafe": true,
+      "pillar": "sportster_chopper",
+      "evergreen": true,
+      "seedLibrary": true,
+      "exampleVideos": []
+    }
+  ],
+  "trendingTerms": [
+    {
+      "label": "water pump fail explainer",
+      "classification": "topic",
+      "halfLifeDays": 5,
+      "searchVsTrend": "trend",
+      "dynoSafe": true,
+      "pillar": "electrical_diagnosis",
+      "whyNow": "Regional builders posting; flash window ~24\u201372h if OEM news spikes.",
+      "exampleVideos": []
+    }
+  ],
+  "competitors": [
+    {
+      "handle": "swaffordspeed",
+      "displayName": "Swafford Speed",
+      "role": "own_account",
+      "followers": 4200,
+      "totalLikes": 18000,
+      "postsPerWeek": 2,
+      "medianViews": 1800,
+      "maxViews": 12000,
+      "followerLikeHealthPct": 23.3,
+      "geo": "upstate_sc",
+      "hookPatterns": [
+        "shop bay cold open"
+      ],
+      "ctaPatterns": [
+        "Book performance work \u2014 swaffordspeed.com"
+      ],
+      "sample": {
+        "n": 8,
+        "dateRange": "2026-09-01 to 2026-10-05",
+        "method": "manual"
+      },
+      "topVideos": [
+        {
+          "platform": "tiktok",
+          "url": "https://www.tiktok.com/@swaffordspeed/video/7000000000000000001",
+          "handle": "swaffordspeed",
+          "caption": "Twin Cam sound check in the Greenville bay",
+          "views": 6400,
+          "likes": 210,
+          "dynoSafe": true,
+          "searchVsTrend": "search"
+        }
+      ],
+      "notes": "Own-account snapshot stored by Brandbot. Not Login Kit analytics."
+    },
+    {
+      "handle": "bertsharley",
+      "displayName": "BertsHarley",
+      "role": "north_star",
+      "followers": 120000,
+      "totalLikes": 900000,
+      "postsPerWeek": 3,
+      "medianViews": 20000,
+      "maxViews": 180000,
+      "geo": "national",
+      "sample": {
+        "n": 20,
+        "method": "public_grid"
+      },
+      "topVideos": [],
+      "notes": "North star. Format only."
+    },
+    {
+      "handle": "docharley",
+      "displayName": "Doc Harley",
+      "role": "north_star",
+      "followers": 50000,
+      "totalLikes": 400000,
+      "geo": "national",
+      "sample": {
+        "n": 20,
+        "method": "public_grid"
+      },
+      "topVideos": [],
+      "notes": "North star. Format only."
+    },
+    {
+      "handle": "kruesi",
+      "displayName": "Kruesi Originals",
+      "role": "north_star",
+      "followers": 80000,
+      "totalLikes": 700000,
+      "geo": "national",
+      "sample": {
+        "n": 20,
+        "method": "public_grid"
+      },
+      "topVideos": [],
+      "notes": "North star. Format only."
+    }
+  ],
+  "recreateCards": [
+    {
+      "cardId": "recreate-cam-sound-01",
+      "title": "Twin Cam sound \u2014 older bike cold open",
+      "inspiredBy": [
+        {
+          "platform": "tiktok",
+          "url": "https://www.tiktok.com/@mickeycohenmotorsports/video/7680341397030915341",
+          "handle": "mickeycohenmotorsports",
+          "views": 37000,
+          "likes": 1797,
+          "dynoSafe": true,
+          "searchVsTrend": "search"
+        }
+      ],
+      "hook": "This Twin Cam still hits \u2014 and we didn\u2019t need a dyno room to prove it.",
+      "onScreenText": "TWIN CAM SOUND \u00b7 OLDER BIKE",
+      "spokenKeywordFirstSecond": "Twin Cam sound",
+      "captionLine1": "Twin Cam sound on an older Harley \u2014 Upstate SC performance shop",
+      "captionBody": "Build / repair work that gets the bike performance-ready. Soft book link in bio.",
+      "hashtags": [
+        "#TwinCam",
+        "#HarleyDavidson",
+        "#HarleyShop",
+        "#GreenvilleSC",
+        "#UpstateSC"
+      ],
+      "inviteKeywordComment": "Drop your year + model if you want this sound on your bike.",
+      "scriptBeats": [
+        "Cold open: exhaust thump, no music bed",
+        "One sentence: older bike, still performance-minded",
+        "Show wrench / cam cover detail 2s",
+        "Soft CTA: book performance work"
+      ],
+      "capCutSceneOutline": [
+        {
+          "order": 1,
+          "durationSec": 3,
+          "visual": "Pocket 4 low angle on pipes, idle",
+          "onScreen": "TWIN CAM SOUND",
+          "vo": "Twin Cam sound \u2014 older bike.",
+          "sfxOrSound": "native exhaust only"
+        },
+        {
+          "order": 2,
+          "durationSec": 4,
+          "visual": "Walk to bike / cam cover close-up",
+          "onScreen": "OLDER HARLEY \u00b7 STILL HITS",
+          "vo": "We build and repair so it feels like a performance bike.",
+          "brollSlot": "360 reframe of shop bay"
+        },
+        {
+          "order": 3,
+          "durationSec": 4,
+          "visual": "Rider reaction or roll-on",
+          "onScreen": "UPSTATE SC / WNC",
+          "vo": null
+        },
+        {
+          "order": 4,
+          "durationSec": 3,
+          "visual": "End card \u2014 shop + soft book",
+          "onScreen": "BOOK PERFORMANCE WORK",
+          "vo": "Upstate SC and WNC \u2014 link in bio."
+        }
+      ],
+      "descriptChapters": [
+        {
+          "title": "Cold open sound",
+          "vo": "Twin Cam sound on an older Harley.",
+          "broll": "pipes idle"
+        },
+        {
+          "title": "Why it matters",
+          "vo": "Performance-minded repair without dyno hero claims.",
+          "broll": "hands on cover"
+        },
+        {
+          "title": "CTA",
+          "vo": "Book performance work \u2014 Greenville / Asheville area.",
+          "broll": "end card"
+        }
+      ],
+      "cameraNotes": {
+        "primary": "both",
+        "pocket4": "A-cam low pipe angle; 24\u201330s total clip",
+        "osmo360": "Bay overhead \u2192 reframe 9:16 in DJI Studio before Descript",
+        "micMini": "Dirty scratch VO on Mic Mini; clap sync",
+        "clapSync": true,
+        "notes": "Do not bury exhaust under trend music."
+      },
+      "soundSuggestion": "Native bike sound primary; optional light bed under VO only",
+      "dynoSafe": true,
+      "pillar": "older_harley_repair",
+      "searchVsTrend": "search",
+      "geo": "upstate_sc",
+      "assignee": "matt",
+      "softCta": "Book performance work \u2014 link in bio",
+      "estimatedSeconds": 35,
+      "priority": "this_week",
+      "growthPrincipleTags": [
+        "metadata_stack",
+        "edit_cadence_3_5s",
+        "outcome_cta",
+        "keyword_in_first_second",
+        "local_geo_tags",
+        "dyno_safe"
+      ]
+    },
+    {
+      "cardId": "recreate-water-pump-01",
+      "title": "Water pump \u2014 electrical diagnosis",
+      "hook": "If the temp gauge climbs, check the water pump before you chase sensors.",
+      "onScreenText": "WATER PUMP \u00b7 OLDER HARLEY",
+      "spokenKeywordFirstSecond": "water pump",
+      "captionLine1": "Harley water pump diagnosis \u2014 Upstate SC shop",
+      "captionBody": "Electrical and cooling checks that get the bike performance-ready.",
+      "hashtags": [
+        "#HarleyRepair",
+        "#WaterPump",
+        "#ElectricalDiagnosis",
+        "#GreenvilleSC",
+        "#WNC"
+      ],
+      "inviteKeywordComment": "Comment your year if the temp gauge has been lying.",
+      "scriptBeats": [
+        "Cold open: gauge or weep at the pump",
+        "One sentence: older bike, check the pump",
+        "Show the test, 4 seconds",
+        "Soft CTA"
+      ],
+      "capCutSceneOutline": [
+        {
+          "order": 1,
+          "durationSec": 3,
+          "visual": "Pocket 4 on the temp gauge",
+          "onScreen": "TEMP CLIMBING",
+          "vo": "Water pump \u2014 older Harley."
+        },
+        {
+          "order": 2,
+          "durationSec": 4,
+          "visual": "Weep at the pump housing",
+          "onScreen": "CHECK THE PUMP",
+          "vo": "Before you chase sensors.",
+          "brollSlot": "360 bay reframe"
+        },
+        {
+          "order": 3,
+          "durationSec": 4,
+          "visual": "Mic Mini VO over hands",
+          "onScreen": "UPSTATE SC / WNC",
+          "vo": "Performance-ready, not a parts cannon."
+        },
+        {
+          "order": 4,
+          "durationSec": 3,
+          "visual": "End card",
+          "onScreen": "BOOK PERFORMANCE WORK",
+          "vo": "swaffordspeed.com"
+        }
+      ],
+      "descriptChapters": [
+        {
+          "title": "Symptom",
+          "vo": "Temp gauge climbing on an older Harley.",
+          "broll": "gauge"
+        },
+        {
+          "title": "Check",
+          "vo": "Look at the water pump before the sensor rabbit hole.",
+          "broll": "housing"
+        },
+        {
+          "title": "CTA",
+          "vo": "Book performance work \u2014 Greenville and Asheville.",
+          "broll": "end card"
+        }
+      ],
+      "cameraNotes": {
+        "primary": "pocket4",
+        "pocket4": "Tight on gauge then housing",
+        "osmo360": "Bay context, reframe in DJI Studio",
+        "micMini": "Scratch VO, clap sync",
+        "clapSync": true,
+        "notes": "Keep the diagnosis visual. No trend music over the explanation."
+      },
+      "soundSuggestion": "Shop room tone under VO",
+      "dynoSafe": true,
+      "pillar": "electrical_diagnosis",
+      "searchVsTrend": "trend",
+      "geo": "wnc",
+      "assignee": "matt",
+      "softCta": "Book performance work \u2014 swaffordspeed.com \u00b7 864-666-9451",
+      "estimatedSeconds": 32,
+      "priority": "this_week",
+      "growthPrincipleTags": [
+        "mix_50_50_trend_search",
+        "metadata_stack",
+        "edit_cadence_3_5s",
+        "outcome_cta",
+        "dyno_safe"
+      ]
+    }
+  ],
+  "postingWindows": {
+    "timezone": "America/New_York",
+    "recommendedSlots": [
+      {
+        "dayOfWeek": "tue",
+        "localTime": "11:30",
+        "reason": "Competitor median posts cluster late morning ET midweek",
+        "source": "competitor_heatmap"
+      },
+      {
+        "dayOfWeek": "thu",
+        "localTime": "18:00",
+        "reason": "After-work rider scroll proxy",
+        "source": "niche_proxy"
+      }
+    ],
+    "heatmapProxy": {
+      "basis": "Post timestamps from sampled competitor grids (proxy only \u2014 not own-account analytics)",
+      "days": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.1,
+          0.2,
+          0.3,
+          0.4,
+          0.3,
+          0.2,
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.3,
+          0.2,
+          0.1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.1,
+          0.2,
+          0.4,
+          0.5,
+          0.4,
+          0.3,
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.4,
+          0.2,
+          0.1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.1,
+          0.2,
+          0.3,
+          0.4,
+          0.3,
+          0.2,
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.3,
+          0.2,
+          0.1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.1,
+          0.2,
+          0.4,
+          0.5,
+          0.4,
+          0.3,
+          0.2,
+          0.3,
+          0.5,
+          0.6,
+          0.4,
+          0.2,
+          0.1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.1,
+          0.2,
+          0.3,
+          0.4,
+          0.3,
+          0.2,
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.3,
+          0.2,
+          0.1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.2,
+          0.3,
+          0.4,
+          0.4,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.2,
+          0.1,
+          0.1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.2,
+          0.3,
+          0.3,
+          0.3,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.1,
+          0.1,
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    "caveat": "First ~300\u20131000 views decide push \u2014 wrong early audience kills reach. Reply in the first hour."
+  },
+  "dataGaps": [
+    {
+      "code": "api_missing",
+      "message": "No commercial TikTok API key yet; public grid only. Views were readable this run.",
+      "severity": "medium",
+      "affectedHandles": []
+    }
+  ],
+  "growthPrincipleTags": [
+    "mix_50_50_trend_search",
+    "metadata_stack",
+    "edit_cadence_3_5s",
+    "outcome_cta",
+    "best_time_windows",
+    "dyno_safe"
+  ],
+  "exportsHints": {
+    "defaultStack": "dji_studio_descript_capcut",
+    "opusOptional": true
+  }
+}
