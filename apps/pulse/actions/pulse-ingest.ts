@@ -2,7 +2,7 @@ import { defineAction } from "@agent-native/core/action";
 
 import {
   assertIngestAuthorized,
-  resolveOrgId,
+  resolveBearerIngestOrgId,
 } from "../server/lib/pulse-access.js";
 import { upsertPulseReport } from "../server/lib/pulse-ingest.js";
 import { pulseIngestSchema } from "../shared/pulse-schema.js";
@@ -10,7 +10,7 @@ import { getRequestUserEmail } from "@agent-native/core/server";
 
 export default defineAction({
   description:
-    "Upsert a Brandbot Swafford Pulse JSON document (schema 1.0). Idempotent on reportDate + source. HTTP callers send Authorization: Bearer <PULSE_INGEST_SECRET>. Signed-in members may also call it.",
+    "Upsert a Brandbot Swafford Pulse JSON document (schema 1.0). Idempotent on reportDate + source. HTTP callers send Authorization: Bearer <PULSE_INGEST_SECRET>. Bearer calls store the report on PULSE_INGEST_ORG_ID and do not use a session. Signed-in members may also call it for their own organization.",
   schema: pulseIngestSchema,
   http: { method: "POST" },
   requiresAuth: false,
@@ -20,7 +20,7 @@ export default defineAction({
       ctx?.requestHeaders?.get("authorization"),
     );
     const orgId =
-      auth.mode === "session" ? auth.orgId : await resolveOrgId();
+      auth.mode === "session" ? auth.orgId : await resolveBearerIngestOrgId();
     const actorEmail =
       auth.mode === "session"
         ? auth.email

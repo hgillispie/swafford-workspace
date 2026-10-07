@@ -20,6 +20,14 @@ Authorization: Bearer <PULSE_INGEST_SECRET>
 Content-Type: application/json
 ```
 
+The bearer call has no session. It stores the report on the organization in
+`PULSE_INGEST_ORG_ID` and does not look at other organizations. Set that
+deploy env var to one `organizations.id`: 32 hex characters, no dashes (a
+UUID with the hyphens removed). Case is normalized to lowercase. If the
+variable is missing, blank, or not that shape, ingest returns 503 and does
+not choose an organization, even when the database has only one. Do not
+commit the value. Set it in the Netlify site environment.
+
 Idempotency key is `idempotencyKey` or `{reportDate}:{source}` (`tiktok` or
 `youtube`). Re-posting the same key replaces that report and its children.
 Card status (`open` / `filmed` / `skipped`) and backlog status past `idea`
@@ -27,17 +35,21 @@ are kept.
 
 `PULSE_INGEST_SECRET` is server-only. Add it in Dispatch vault (workspace
 secret, not required) or as a deploy env var for the unauthenticated Brandbot
-POST. Do not commit it. Signed-in members can also call the action.
+POST. Do not commit it. Signed-in members can also call the action; that
+path stores the report on their own organization.
 
 The contract example in the Brandbot doc has one recreate card. The schema
 requires at least two. `fixtures/pulse-2026-10-05-tiktok.json` is a valid
 local payload (the Oct 5 shape plus a water-pump card).
 
-## Drive fallback
+Signed-in members of the ingest organization see the stored report on
+**This week** and the other desks. No paste step.
 
-Until the secret is shared, drop `pulse-{reportDate}-{source}.json` next to
-the PDF and paste that JSON on **Inbox** (`pulse-ingest-from-drive`). Pulse
-does not download Drive bytes. A file id alone is recorded as not fetched.
+## Admin paste fallback
+
+Owners and admins can paste report text from **Inbox**. The control stays
+collapsed. Pulse does not download Drive bytes. A file id alone is recorded
+as not fetched.
 
 ## Dyno
 

@@ -103,14 +103,14 @@ export function WeekScreen() {
         {!data?.report ? (
           <Panel>
             <p className="text-sm">
-              No pulse stored yet. Brandbot can POST the JSON, or paste a Drive
-              drop in Inbox.
+              No report yet. Brandbot sends them on its own. Shoot cards show
+              up here when one arrives.
             </p>
             <Link
               to="/inbox"
               className="mt-3 inline-flex h-8 items-center rounded-md border border-border px-3 text-sm"
             >
-              Open inbox
+              Check inbox
             </Link>
           </Panel>
         ) : (
@@ -934,69 +934,137 @@ function AuditBody({ audit }: { audit: Audit }) {
   );
 }
 
+type InboxReport = {
+  id: string;
+  reportDate: string;
+  source: string;
+  headline: string;
+};
+
+type InboxStatus = {
+  canPaste?: boolean;
+  reports?: InboxReport[];
+  summary?: string;
+};
+
+function formatReportDate(iso: string): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!year || !month || !day) return iso;
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function sourceLabel(source: string): string {
+  if (source === "tiktok") return "TikTok";
+  if (source === "youtube") return "YouTube";
+  return source;
+}
+
 export function InboxScreen() {
   const [json, setJson] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const ingest = useActionMutation("pulse-ingest-from-drive");
   const status = useActionQuery("pulse-ingest-status", {}, readOnce);
+  const data = status.data as InboxStatus | undefined;
+  const reports = data?.reports ?? [];
   return (
-    <PulsePage kicker="Inbox" title="Brandbot drop">
-      <Panel>
-        <p className="text-sm">
-          Preferred path is POST{" "}
-          <code className="text-xs">
-            /pulse/_agent-native/actions/pulse-ingest
-          </code>{" "}
-          with <code className="text-xs">Authorization: Bearer</code> the vault
-          secret. Until that is live, paste{" "}
-          <code className="text-xs">
-            pulse-{"{date}"}-{"{source}"}.json
-          </code>{" "}
-          here. Pulse does not download Drive files.
-        </p>
-        <AsyncRegion
-          pending={status.isPending}
-          isError={status.isError}
-          error={status.error}
-          onRetry={() => void status.refetch()}
-          label="Ingest status"
-          skeleton={
-            <div className="mt-2 h-4 w-64 animate-pulse rounded bg-muted" />
-          }
-        >
-          <p className="mt-2 text-xs text-muted-foreground">
-            {(status.data as { summary?: string } | undefined)?.summary}
-          </p>
-        </AsyncRegion>
-      </Panel>
-      <form
-        className="grid gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          ingest.mutate(
-            { json },
-            {
-              onSuccess: (payload) => {
-                const body = payload as { message?: string };
-                setNote(body.message ?? "Stored.");
-              },
-            },
-          );
-        }}
+    <PulsePage
+      kicker="Inbox"
+      title="Reports"
+      action={
+        reports.length > 0 ? (
+          <Link
+            to="/home"
+            className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm"
+          >
+            Open this week
+          </Link>
+        ) : null
+      }
+    >
+      <AsyncRegion
+        pending={status.isPending}
+        isError={status.isError}
+        error={status.error}
+        onRetry={() => void status.refetch()}
+        label="Reports"
+        skeleton={
+          <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+            <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+            <div className="h-3 w-full animate-pulse rounded bg-muted" />
+            <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
+          </div>
+        }
       >
-        <Label htmlFor="pulse-json">Pulse JSON</Label>
-        <textarea
-          id="pulse-json"
-          value={json}
-          onChange={(event) => setJson(event.target.value)}
-          className="min-h-48 rounded-md border border-input bg-background p-3 font-mono text-xs"
-          placeholder='{ "schemaVersion": "1.0", ... }'
-        />
-        <Button type="submit" disabled={ingest.isPending || !json.trim()}>
-          {ingest.isPending ? "Saving…" : "Store JSON"}
-        </Button>
-        {note ? <p className="text-sm">{note}</p> : null}
-      </form>
+        <Panel>
+          <p className="text-sm">
+            Brandbot sends each report here on its own. It shows up on This
+            week when it arrives.
+          </p>
+          {reports.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Nothing has arrived yet.
+            </p>
+          ) : (
+            <ul className="mt-4 divide-y divide-border">
+              {reports.map((report) => (
+                <li key={report.id} className="py-3 first:pt-0 last:pb-0">
+                  <p className="text-sm font-medium">{report.headline}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {formatReportDate(report.reportDate)} ·{" "}
+                    {sourceLabel(report.source)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+        {data?.canPaste ? (
+          <details className="rounded-lg border border-border bg-card px-4 py-3">
+            <summary className="cursor-pointer text-sm text-muted-foreground">
+              Paste a report by hand
+            </summary>
+            <form
+              className="mt-3 grid gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                ingest.mutate(
+                  { json },
+                  {
+                    onSuccess: (payload) => {
+                      const body = payload as { message?: string };
+                      setNote(body.message ?? "Stored.");
+                      setJson("");
+                      void status.refetch();
+                    },
+                  },
+                );
+              }}
+            >
+              <p className="text-sm text-muted-foreground">
+                Use this only when a report did not arrive. Paste the report
+                text.
+              </p>
+              <Label htmlFor="pulse-json">Report text</Label>
+              <textarea
+                id="pulse-json"
+                value={json}
+                onChange={(event) => setJson(event.target.value)}
+                className="min-h-36 rounded-md border border-input bg-background p-3 font-mono text-xs"
+                placeholder="Paste the report here"
+              />
+              <Button type="submit" disabled={ingest.isPending || !json.trim()}>
+                {ingest.isPending ? "Saving…" : "Store report"}
+              </Button>
+              {note ? <p className="text-sm">{note}</p> : null}
+            </form>
+          </details>
+        ) : null}
+      </AsyncRegion>
     </PulsePage>
   );
 }

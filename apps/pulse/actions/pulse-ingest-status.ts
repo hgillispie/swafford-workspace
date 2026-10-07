@@ -3,45 +3,37 @@ import { desc, eq } from "@agent-native/core/db/schema";
 import { z } from "zod";
 
 import { getDb } from "../server/db/index.js";
-import { pulseIngestRuns } from "../server/db/schema.js";
-import {
-  readIngestSecret,
-  requireMember,
-} from "../server/lib/pulse-access.js";
+import { pulseReports } from "../server/db/schema.js";
+import { isOrgAdmin, requireMember } from "../server/lib/pulse-access.js";
 
 export default defineAction({
   description:
-    "Latest Pulse ingest runs for this organization, plus whether the vault secret resolves for this session. Does not return the secret.",
+    "Latest Brandbot reports stored for this organization, and whether the caller may paste a report by hand. Does not return credentials.",
   schema: z.object({}),
   http: { method: "GET" },
   readOnly: true,
   run: async () => {
     const actor = await requireMember();
-    const secret = await readIngestSecret();
     const db = getDb();
-    const runs = await db
+    const reports = await db
       .select({
-        id: pulseIngestRuns.id,
-        reportId: pulseIngestRuns.reportId,
-        idempotencyKey: pulseIngestRuns.idempotencyKey,
-        status: pulseIngestRuns.status,
-        errorMessage: pulseIngestRuns.errorMessage,
-        schemaVersion: pulseIngestRuns.schemaVersion,
-        receivedAt: pulseIngestRuns.receivedAt,
+        id: pulseReports.id,
+        reportDate: pulseReports.reportDate,
+        source: pulseReports.source,
+        headline: pulseReports.headline,
+        createdAt: pulseReports.createdAt,
       })
-      .from(pulseIngestRuns)
-      .where(eq(pulseIngestRuns.orgId, actor.orgId))
-      .orderBy(desc(pulseIngestRuns.receivedAt))
-      .limit(20);
+      .from(pulseReports)
+      .where(eq(pulseReports.orgId, actor.orgId))
+      .orderBy(desc(pulseReports.reportDate), desc(pulseReports.createdAt))
+      .limit(12);
     return {
-      secretConfiguredForSession: Boolean(secret),
-      ingestPath: "/pulse/_agent-native/actions/pulse-ingest",
-      authHeader: "Authorization: Bearer <PULSE_INGEST_SECRET>",
-      driveFileName: "pulse-{reportDate}-{source}.json",
-      runs,
-      summary: secret
-        ? "Ingest secret resolves for this session."
-        : "No vault secret resolved for this session. Brandbot can still use the deploy env var on the unauthenticated POST.",
+      canPaste: isOrgAdmin(actor.role),
+      reports,
+      summary:
+        reports.length > 0
+          ? "Brandbot sent these reports. Open This week for the latest shoot cards."
+          : "No reports yet. Brandbot sends them on its own.",
     };
   },
 });
