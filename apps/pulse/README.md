@@ -20,13 +20,15 @@ Authorization: Bearer <PULSE_INGEST_SECRET>
 Content-Type: application/json
 ```
 
-The bearer call has no session. It stores the report on the organization in
-`PULSE_INGEST_ORG_ID` and does not look at other organizations. Set that
-deploy env var to one `organizations.id`: 32 hex characters, no dashes (a
-UUID with the hyphens removed). Case is normalized to lowercase. If the
-variable is missing, blank, or not that shape, ingest returns 503 and does
-not choose an organization, even when the database has only one. Do not
-commit the value. Set it in the Netlify site environment.
+The bearer call has no session. When `PULSE_INGEST_ORG_ID` is set, the report
+is stored on that organization and other organizations are not considered.
+The value is one `organizations.id`: 32 hex characters, no dashes (a UUID
+with the hyphens removed). Case is normalized to lowercase. Do not commit
+it. Set it in the Netlify site environment. When the variable is unset,
+bearer ingest keeps the previous lookup: the request organization, or the
+only organization in the database, or 503 `org_unresolved` when several
+organizations exist. A set value that is not 32 hex characters, or that
+does not match an organization, returns 503 and does not fall back.
 
 Idempotency key is `idempotencyKey` or `{reportDate}:{source}` (`tiktok` or
 `youtube`). Re-posting the same key replaces that report and its children.

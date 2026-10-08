@@ -70,19 +70,14 @@ export async function assertIngestAuthorized(header: string | null | undefined) 
 }
 
 /**
- * Organization that owns Brandbot bearer ingest. Deploy config only.
- * A missing or malformed value fails closed. This never reads the session
- * and never picks an organization because the database has exactly one.
+ * Fixed org for sessionless Brandbot ingest. Active only when
+ * `PULSE_INGEST_ORG_ID` is set. Unset returns null so callers keep the
+ * previous organization lookup.
  */
-export function readConfiguredIngestOrgId(): string {
+export function readConfiguredIngestOrgId(): string | null {
   // guard:allow-env-credential — deploy-level org id for unauthenticated Brandbot ingest, not a user credential
   const raw = process.env.PULSE_INGEST_ORG_ID?.trim() ?? "";
-  if (!raw) {
-    fail(
-      `${INGEST_ORG_ID_ENV} is not set. Set it to the 32-character hex organization id that should receive Brandbot reports. Pulse will not choose an organization.`,
-      { statusCode: 503, errorCode: "ingest_org_missing" },
-    );
-  }
+  if (!raw) return null;
   if (!INGEST_ORG_ID_PATTERN.test(raw)) {
     fail(
       `${INGEST_ORG_ID_ENV} must be a 32-character hex organization id with no dashes.`,
@@ -92,8 +87,10 @@ export function readConfiguredIngestOrgId(): string {
   return raw.toLowerCase();
 }
 
-export async function resolveBearerIngestOrgId(): Promise<string> {
+/** Null when the env var is unset. A set value must match one organization. */
+export async function resolveBearerIngestOrgId(): Promise<string | null> {
   const orgId = readConfiguredIngestOrgId();
+  if (!orgId) return null;
   const db = getDb();
   const row = (
     await db
@@ -109,6 +106,23 @@ export async function resolveBearerIngestOrgId(): Promise<string> {
     );
   }
   return orgId;
+}
+
+export async function resolveOrgId(): Promise<string> {
+  const fromRequest = getRequestOrgId()?.trim();
+  if (fromRequest) return fromRequest;
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: organizations.id,
+      domain: organizations.allowedDomain,
+    })
+    .from(organizations);
+  if (rows.length === 1 && rows[0]) return rows[0].id;
+  fail(
+    "Pulse could not resolve a workspace organization for this ingest. Sign in, or keep a single organization in the workspace.",
+    { statusCode: 503, errorCode: "org_unresolved" },
+  );
 }
 
 export function isOrgAdmin(role: string): boolean {

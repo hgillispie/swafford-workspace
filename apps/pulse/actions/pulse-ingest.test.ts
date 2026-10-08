@@ -59,7 +59,7 @@ beforeAll(async () => {
   await runPulseMigrations(undefined as never);
   const { getDbExec } = await import("@agent-native/core/db");
   await getDbExec().execute(
-    `CREATE TABLE IF NOT EXISTS organizations (id TEXT PRIMARY KEY)`,
+    `CREATE TABLE IF NOT EXISTS organizations (id TEXT PRIMARY KEY, allowed_domain TEXT)`,
   );
   await getDbExec().execute({
     sql: `INSERT INTO organizations (id) VALUES ($1), ($2), ($3)`,
@@ -79,11 +79,11 @@ afterAll(() => {
 });
 
 describe("pulse bearer ingest", () => {
-  it("fails closed when PULSE_INGEST_ORG_ID is missing and does not guess an org", async () => {
+  it("keeps the previous org_unresolved error when PULSE_INGEST_ORG_ID is unset", async () => {
     delete process.env.PULSE_INGEST_ORG_ID;
     try {
       await expect(action.run(fixture, bearer())).rejects.toMatchObject({
-        errorCode: "ingest_org_missing",
+        errorCode: "org_unresolved",
         statusCode: 503,
       });
       const rows = await getDb().select({ id: pulseReports.id }).from(pulseReports);
