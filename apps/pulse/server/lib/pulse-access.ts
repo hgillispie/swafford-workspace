@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { fail } from "@agent-native/core/action";
 import { and, eq } from "@agent-native/core/db/schema";
 import { orgMembers, organizations } from "@agent-native/core/org";
@@ -6,7 +8,6 @@ import {
   getRequestOrgId,
   getRequestUserEmail,
 } from "@agent-native/core/server";
-import { timingSafeEqual } from "node:crypto";
 
 import { getDb } from "../db/index.js";
 import { pulseSettings } from "../db/schema.js";
@@ -40,7 +41,9 @@ export async function readIngestSecret(): Promise<string | null> {
   }
 }
 
-export async function assertIngestAuthorized(header: string | null | undefined) {
+export async function assertIngestAuthorized(
+  header: string | null | undefined,
+) {
   const secret = await readIngestSecret();
   const bearer = bearerFromHeader(header);
   if (bearer) {
@@ -75,8 +78,7 @@ export async function assertIngestAuthorized(header: string | null | undefined) 
  * previous organization lookup.
  */
 export function readConfiguredIngestOrgId(): string | null {
-  // guard:allow-env-credential — deploy-level org id for unauthenticated Brandbot ingest, not a user credential
-  const raw = process.env.PULSE_INGEST_ORG_ID?.trim() ?? "";
+  const raw = rawIngestOrgId();
   if (!raw) return null;
   if (!INGEST_ORG_ID_PATTERN.test(raw)) {
     fail(
@@ -85,6 +87,30 @@ export function readConfiguredIngestOrgId(): string | null {
     );
   }
   return raw.toLowerCase();
+}
+
+function rawIngestOrgId(): string {
+  // guard:allow-env-credential — deploy-level org id for unauthenticated Brandbot ingest, not a user credential
+  return process.env.PULSE_INGEST_ORG_ID?.trim() ?? "";
+}
+
+export type BrandbotDelivery =
+  | "connected"
+  | "not_set"
+  | "other_workspace"
+  | "invalid";
+
+/**
+ * Where sessionless Brandbot reports land, relative to `orgId`. Never throws,
+ * so an admin screen can show the state instead of failing.
+ */
+export function brandbotDeliveryFor(orgId: string): BrandbotDelivery {
+  const raw = rawIngestOrgId();
+  if (!raw) return "not_set";
+  if (!INGEST_ORG_ID_PATTERN.test(raw)) return "invalid";
+  return raw.toLowerCase() === orgId.toLowerCase()
+    ? "connected"
+    : "other_workspace";
 }
 
 /** Null when the env var is unset. A set value must match one organization. */
@@ -180,9 +206,7 @@ export async function readDynoUnlocked(orgId: string): Promise<boolean> {
     await db
       .select({ dynoUnlocked: pulseSettings.dynoUnlocked })
       .from(pulseSettings)
-      .where(
-        and(eq(pulseSettings.id, orgId), eq(pulseSettings.orgId, orgId)),
-      )
+      .where(and(eq(pulseSettings.id, orgId), eq(pulseSettings.orgId, orgId)))
       .limit(1)
   )[0];
   return row?.dynoUnlocked === true;

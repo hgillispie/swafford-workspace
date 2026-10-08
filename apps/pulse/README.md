@@ -53,6 +53,15 @@ Owners and admins can paste report text from **Inbox**. The control stays
 collapsed. Pulse does not download Drive bytes. A file id alone is recorded
 as not fetched.
 
+## Finding the workspace id
+
+Owners and admins see **Brandbot delivery** on the Admin screen. It says
+whether Brandbot reports reach this workspace, and when they do not it shows
+this workspace's id with a copy button. That id is the value for
+`PULSE_INGEST_ORG_ID` in the Netlify site environment. After the site is
+redeployed with it set, the same card turns to "delivered on their own".
+Members who are not owners or admins do not get the id.
+
 ## Dyno
 
 Hunter admin toggle (`Admin`, owners and admins) wins over

@@ -12,3 +12,7 @@ reports on that organization and does not use a session. When it is unset,
 the previous organization lookup stays in place. Inbox copy is for Matt:
 reports arrive from Brandbot, and pasting is an admin fallback. Do not
 mention vault secrets, env vars, or request paths in that copy.
+
+The Admin screen shows owners and admins a Brandbot delivery card: the
+workspace id (copyable) and whether `PULSE_INGEST_ORG_ID` points at this
+workspace. `pulse-get-settings` returns both only for owners and admins.

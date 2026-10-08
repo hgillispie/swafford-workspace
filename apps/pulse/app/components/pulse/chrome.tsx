@@ -143,6 +143,31 @@ export function CopyPackButton({
   );
 }
 
+export function CopyTextButton({
+  text,
+  label,
+}: {
+  text: string;
+  label: string;
+}) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(
+          () => toast.success(`${label} copied`),
+          () => toast.error("Clipboard was blocked"),
+        );
+      }}
+    >
+      <IconCopy className="size-3.5" />
+      Copy {label.toLowerCase()}
+    </Button>
+  );
+}
+
 export function MetaLine({
   items,
 }: {

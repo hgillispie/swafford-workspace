@@ -86,7 +86,9 @@ describe("pulse bearer ingest", () => {
         errorCode: "org_unresolved",
         statusCode: 503,
       });
-      const rows = await getDb().select({ id: pulseReports.id }).from(pulseReports);
+      const rows = await getDb()
+        .select({ id: pulseReports.id })
+        .from(pulseReports);
       expect(rows).toHaveLength(0);
     } finally {
       process.env.PULSE_INGEST_ORG_ID = CONFIGURED_ORG;
@@ -129,9 +131,7 @@ describe("pulse bearer ingest", () => {
         orgId: pulseReports.orgId,
       })
       .from(pulseReports)
-      .where(
-        eq(pulseReports.orgId, CONFIGURED_ORG),
-      );
+      .where(eq(pulseReports.orgId, CONFIGURED_ORG));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.headline).toBe("Updated headline for the same day");
 
@@ -140,5 +140,23 @@ describe("pulse bearer ingest", () => {
       .from(pulseRecreateCards)
       .where(eq(pulseRecreateCards.reportId, saved.id));
     expect(cards).toHaveLength(fixture.recreateCards.length);
+  });
+});
+
+describe("brandbot delivery status", () => {
+  it("tells an admin whether bearer reports reach their workspace", async () => {
+    const { brandbotDeliveryFor } =
+      await import("../server/lib/pulse-access.js");
+    expect(brandbotDeliveryFor(CONFIGURED_ORG)).toBe("connected");
+    expect(brandbotDeliveryFor(CONFIGURED_ORG.toUpperCase())).toBe("connected");
+    expect(brandbotDeliveryFor(OTHER_ORG_A)).toBe("other_workspace");
+    try {
+      delete process.env.PULSE_INGEST_ORG_ID;
+      expect(brandbotDeliveryFor(CONFIGURED_ORG)).toBe("not_set");
+      process.env.PULSE_INGEST_ORG_ID = "not-a-32-char-hex-id";
+      expect(brandbotDeliveryFor(CONFIGURED_ORG)).toBe("invalid");
+    } finally {
+      process.env.PULSE_INGEST_ORG_ID = CONFIGURED_ORG;
+    }
   });
 });

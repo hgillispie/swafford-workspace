@@ -13,10 +13,11 @@ No secret values in this note. Set credentials only in the host environment.
 - Inbox lists stored reports for the signed-in org. Paste is an owner/admin fallback, collapsed. Copy is for Matt and does not name env vars or API paths.
 - Tests cover the configured org (three orgs present), the unset env var, and idempotency.
 
-**Unfinished.**
+- Admin shows owners and admins a "Brandbot delivery" card with this workspace's id (copy button) and whether the env var points at it. Covered in `apps/pulse/actions/pulse-ingest.test.ts`.
 
-- `PULSE_INGEST_ORG_ID` is not set in this repo. It must be set on Netlify to Hunter's workspace organization id (`organizations.id`, 32 hex characters, no dashes). Until then, production bearer ingest still 503s `org_unresolved`.
-- Scout work below is not part of this branch's code.
+**Unfinished (needs Hunter, not code).**
+
+- `PULSE_INGEST_ORG_ID` is not set in this repo. Open Pulse → Admin, copy the workspace id from the Brandbot delivery card, and set it in the Netlify site environment, then redeploy. Until then, production bearer ingest still 503s `org_unresolved`. After the redeploy the card reads "delivered on their own". Nothing in the repo can set a Netlify env var.
 
 **Guarded.**
 

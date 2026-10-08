@@ -18,6 +18,7 @@ import {
   AsyncRegion,
   CardSkeleton,
   CopyPackButton,
+  CopyTextButton,
   MetaLine,
   Panel,
   PulsePage,
@@ -103,8 +104,8 @@ export function WeekScreen() {
         {!data?.report ? (
           <Panel>
             <p className="text-sm">
-              No report yet. Brandbot sends them on its own. Shoot cards show
-              up here when one arrives.
+              No report yet. Brandbot sends them on its own. Shoot cards show up
+              here when one arrives.
             </p>
             <Link
               to="/inbox"
@@ -1002,8 +1003,8 @@ export function InboxScreen() {
       >
         <Panel>
           <p className="text-sm">
-            Brandbot sends each report here on its own. It shows up on This
-            week when it arrives.
+            Brandbot sends each report here on its own. It shows up on This week
+            when it arrives.
           </p>
           {reports.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">
@@ -1078,6 +1079,12 @@ export function AdminScreen() {
         canToggle?: boolean;
         payloadDynoUnlocked?: boolean | null;
         summary?: string;
+        workspaceId?: string;
+        brandbotDelivery?:
+          | "connected"
+          | "not_set"
+          | "other_workspace"
+          | "invalid";
       }
     | undefined;
   return (
@@ -1121,6 +1128,37 @@ export function AdminScreen() {
             </p>
           )}
         </Panel>
+        {data?.workspaceId ? (
+          <Panel className="mt-4">
+            <h2 className="text-sm font-medium">Brandbot delivery</h2>
+            <p className="mt-2 text-sm">
+              {data.brandbotDelivery === "connected"
+                ? "Brandbot reports are delivered to this workspace on their own."
+                : data.brandbotDelivery === "other_workspace"
+                  ? "Brandbot reports are set up for a different workspace, so they will not show up here."
+                  : data.brandbotDelivery === "invalid"
+                    ? "Brandbot delivery has a workspace id that is not valid, so reports are being turned away."
+                    : "Brandbot delivery is not tied to a workspace yet. Until it is, reports may be turned away when more than one workspace exists."}
+            </p>
+            {data.brandbotDelivery !== "connected" ? (
+              <>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Workspace id for this workspace. Give it to whoever manages
+                  the site settings.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <code className="rounded-md border border-border bg-muted px-2 py-1 font-mono text-xs break-all">
+                    {data.workspaceId}
+                  </code>
+                  <CopyTextButton
+                    text={data.workspaceId}
+                    label="Workspace id"
+                  />
+                </div>
+              </>
+            ) : null}
+          </Panel>
+        ) : null}
       </AsyncRegion>
     </PulsePage>
   );
