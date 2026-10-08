@@ -33,38 +33,56 @@ are the fallback for the three non-secret names.
 ## Browser uploads
 
 The browser asks Dumps to start a multipart upload, receives presigned part
-URLs, and PUTs the bytes to B2. Part size starts at 8 MiB and grows with the
-file, capped at 32 MiB, so a file stays under 10,000 parts. A 16 GiB file is
-512 parts. Files under 1 GiB send three parts at once. A larger file sends
-one part at a time, and two smaller files can be in flight together.
+URLs, and PUTs the bytes to B2. Parts are 8 MiB, the size rclone and the AWS
+CLI use, so a 16 GiB file is 2,048 parts. A file only gets bigger parts when it
+would need more than 10,000 (about 78 GiB). Files under 1 GiB send three parts
+at once. A larger file sends one part at a time, and two smaller files can be
+in flight together.
 
-The part PUT is the file slice itself, with no Content-Type header. The
-presign signs only `host` and `UNSIGNED-PAYLOAD`. Checksum query parameters
-are left off: `x-amz-checksum-crc32=AAAAAA==` is the checksum of an empty
-body, and Backblaze resets the connection while a real part is uploading.
-The browser then has no response to read. Error responses also omit
-`Access-Control-Allow-Origin`, so a rejected PUT looks the same as a reset.
-After either one, the client asks which parts are already stored and
-continues from the missing numbers. A fresh URL is used for the next try.
-Progress does not move backward. An open upload with no stored parts and a
-part size above 32 MiB is aborted and started again in 32 MiB parts. An
-upload that already has stored parts keeps its part size. No bucket CORS
-change is required for this. The existing `workspaceUploads` rule already
-allows the site origin to PUT and exposes `ETag`.
+The browser copies each part into memory and PUTs that, with no Content-Type
+header. The presign signs only `host` and `UNSIGNED-PAYLOAD`. Checksum query
+parameters are left off: `x-amz-checksum-crc32=AAAAAA==` is the checksum of an
+empty body, and Backblaze resets the connection while a real part is
+uploading. Reading the part first means a file that changes on disk, or sits on
+an external drive, network share, or sync folder that stalls, fails with a clear
+"could not read this file" message instead of looking like a network drop.
+
+Backblaze error responses omit `Access-Control-Allow-Origin`, so the browser
+cannot tell a reset from a rejected request or a lost link. Each part is tried
+up to eight times with backoff, waits while the browser is offline, and is
+abandoned after 60 seconds without progress. When a part still fails, the
+upload lists the parts Backblaze holds, waits, and continues from the missing
+ones. It stops only after four rounds in a row store nothing new. Progress
+never moves backward. The row shows "Lost the connection to Backblaze" while it
+waits.
+
+When it does stop, the page asks the server to run `probe-dump-upload`: one
+5 MiB throwaway part is PUT from the server through the same presigned URL and
+then aborted. The server can read what Backblaze really answered, so the row
+says either `Backblaze rejected a test part with 403 SignatureDoesNotMatch`
+(a key, signature, or encryption problem) or that Backblaze accepted it and the
+break is between this computer and Backblaze (VPN, a firewall or antivirus that
+inspects uploads, an unstable link). The probe also reports whether the bucket
+CORS rule lists the site and exposes `ETag`.
 
 A failed upload stays open. Choose the same file from its row to resume.
 Already stored parts are skipped. If Backblaze no longer has that upload
-session, resume starts the same row over and says so. A failed part shows
-the Backblaze or browser error on the row.
+session, resume first checks whether the finished object is already in the
+bucket (a Complete whose response was lost) and marks the row ready. Otherwise
+it starts the same row over and says so. An open upload with no stored parts
+and a part size above 8 MiB is aborted and started again in 8 MiB parts. An
+upload that already has stored parts keeps its part size. No bucket CORS change
+is required for this. The existing `workspaceUploads` rule already allows the
+site origin to PUT and exposes `ETag`.
 
 `configure-dump-cors` writes the bucket CORS rule: production origin
 `https://swafford-workspace.netlify.app`, the workspace gateway on port
 8080, localhost ports 3000 and 5173, methods `GET`, `PUT`, `HEAD`, and
 `POST`, header `*`, and exposed `ETag`. The bucket already has this rule
 as `workspaceUploads`. Starting an upload does not change it. Successful
-PUTs from that origin already return the origin and `ETag`. No CORS change
-is required for large files. Backblaze omits the origin header on error
-responses, which is why a failed part looks like a network error.
+PUTs from that origin already return the origin and `ETag`. Backblaze omits
+the origin header on error responses, which is why a failed part looks like a
+network error.
 
 Preview and download use a 15-minute presigned GET. Preview is inline so an
 MP4 plays in the browser. Download uses an attachment disposition.

@@ -16,7 +16,9 @@ import {
   failB2,
   getDb,
   loadFile,
+  markReadyIfStored,
   requireActor,
+  toFile,
 } from "../server/lib/dumps.js";
 
 export default defineAction({
@@ -42,7 +44,28 @@ export default defineAction({
     }
     const sizeBytes = Number(file.sizeBytes);
     const planned = planParts(sizeBytes);
+    const alreadyFinished = async () => {
+      const finished = await markReadyIfStored(file, orgId);
+      if (!finished) return null;
+      const partSize = Number(file.partSizeBytes ?? planned.partSize);
+      return {
+        id,
+        filename: file.filename,
+        sizeBytes,
+        partSize,
+        partCount: partCountFor(sizeBytes, partSize),
+        parts: [],
+        restarted: false,
+        completed: true,
+        file: toFile(finished),
+        message: `${file.filename} had already finished uploading.`,
+      };
+    };
     let replace = false;
+    if (!file.uploadId) {
+      const done = await alreadyFinished();
+      if (done) return done;
+    }
     if (file.uploadId) {
       try {
         const parts = await listUploadedParts({
@@ -68,6 +91,9 @@ export default defineAction({
         }
       } catch (err) {
         if (!isMissingMultipartUpload(err)) failB2(err);
+        // The session is gone. If Backblaze finished it, keep the object.
+        const done = await alreadyFinished();
+        if (done) return done;
       }
     }
     if (replace && file.uploadId) {
@@ -100,7 +126,7 @@ export default defineAction({
       parts: [],
       restarted: true,
       message: replace
-        ? `No parts were stored for ${file.filename}, and each part was too large for the browser to finish. Sending it again in smaller parts.`
+        ? `No parts were stored for ${file.filename}, and each part was larger than the browser sends reliably. Sending it again in smaller parts.`
         : `Backblaze dropped the open upload for ${file.filename}, so parts already sent cannot be resumed. Sending the file again from the start.`,
     };
   },

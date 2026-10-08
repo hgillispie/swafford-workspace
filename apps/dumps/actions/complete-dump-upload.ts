@@ -2,12 +2,18 @@ import { defineAction, fail } from "@agent-native/core/action";
 import { and, eq } from "@agent-native/core/db/schema";
 import { z } from "zod";
 
-import { completeUpload, partCountFor, planParts } from "../server/lib/b2.js";
+import {
+  completeUpload,
+  isMissingMultipartUpload,
+  partCountFor,
+  planParts,
+} from "../server/lib/b2.js";
 import {
   dumpFiles,
   failB2,
   getDb,
   loadFile,
+  markReadyIfStored,
   requireActor,
   toFile,
 } from "../server/lib/dumps.js";
@@ -56,6 +62,17 @@ export default defineAction({
         parts,
       });
     } catch (err) {
+      // A retry after a lost response finds the session already completed.
+      if (isMissingMultipartUpload(err)) {
+        const finished = await markReadyIfStored(file, orgId);
+        if (finished) {
+          return {
+            id,
+            file: toFile(finished),
+            message: `Finished upload for ${file.filename}.`,
+          };
+        }
+      }
       await getDb()
         .update(dumpFiles)
         .set({ status: "failed" })

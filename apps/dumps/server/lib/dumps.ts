@@ -9,7 +9,7 @@ import {
 
 import { getDb } from "../db/index.js";
 import { dumpFiles, dumpFolders, dumpShares } from "../db/schema.js";
-import { B2ConfigError, publicB2Error } from "./b2.js";
+import { B2ConfigError, headObject, publicB2Error } from "./b2.js";
 
 export function requireActor(): { email: string; orgId: string } {
   const email = getRequestUserEmail()?.trim();
@@ -35,6 +35,37 @@ export function failB2(err: unknown): never {
     statusCode: 502,
     errorCode: "b2_request_failed",
   });
+}
+
+/**
+ * CompleteMultipartUpload can succeed at Backblaze while its response never
+ * reaches the browser (a function timeout, a dropped link). The multipart
+ * session is then gone, but the finished object is there. Treat a stored
+ * object of the recorded size as a finished upload instead of sending a
+ * multi-gigabyte file again.
+ */
+export async function markReadyIfStored(
+  file: typeof dumpFiles.$inferSelect,
+  orgId: string,
+): Promise<typeof dumpFiles.$inferSelect | null> {
+  let head: Awaited<ReturnType<typeof headObject>>;
+  try {
+    head = await headObject(file.b2Key);
+  } catch {
+    return null;
+  }
+  if (!head || head.sizeBytes !== Number(file.sizeBytes)) return null;
+  const [row] = await getDb()
+    .update(dumpFiles)
+    .set({
+      status: "ready",
+      uploadId: null,
+      sizeBytes: head.sizeBytes,
+      contentType: head.contentType ?? file.contentType,
+    })
+    .where(and(eq(dumpFiles.id, file.id), eq(dumpFiles.orgId, orgId)))
+    .returning();
+  return row ?? null;
 }
 
 export function newId(): string {

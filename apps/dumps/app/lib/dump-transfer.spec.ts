@@ -19,13 +19,18 @@ import {
   browserPartUrlProblem,
   isMissingMultipartUpload,
   planParts,
+  s3ErrorCode,
+  s3ErrorMessage,
 } from "../../../../packages/object-storage/src/parts.ts";
 import {
   BROWSER_MAX_PART_BYTES,
   coerceByteCount,
   missingPartNumbers,
+  isRecoverableTransferError,
   normalizeStoredParts,
+  PART_ATTEMPTS,
   PART_CONCURRENCY,
+  PART_STALL_MS,
   partByteRange,
   partConcurrencyFor,
   partUploadError,
@@ -39,29 +44,30 @@ import {
 const call = vi.mocked(callAction);
 
 describe("planParts", () => {
-  it("keeps small and few-gigabyte files on modest parts", () => {
+  it("sends every file up to about 78 GiB in 8 MiB parts", () => {
     expect(planParts(0)).toEqual({ partSize: 8 * 1024 * 1024, partCount: 1 });
     expect(planParts(100 * 1024 * 1024).partSize).toBe(8 * 1024 * 1024);
     const threePointNineGb = planParts(3_900_000_000);
-    expect(threePointNineGb.partSize).toBe(32 * 1024 * 1024);
-    expect(threePointNineGb.partCount).toBeLessThan(200);
+    expect(threePointNineGb.partSize).toBe(8 * 1024 * 1024);
+    expect(threePointNineGb.partCount).toBe(465);
   });
 
-  it("caps a 16 GiB file at 32 MiB parts", () => {
+  it("plans a 16 GiB file as 2,048 parts of 8 MiB", () => {
     const sixteenGib = 16 * 1024 ** 3;
     const plan = planParts(sixteenGib);
     expect(BROWSER_MAX_PART_BYTES).toBe(serverMaxPartBytes);
-    expect(plan.partSize).toBe(32 * 1024 * 1024);
+    expect(plan.partSize).toBe(8 * 1024 * 1024);
     expect(plan.partSize).toBe(BROWSER_MAX_PART_BYTES);
-    expect(plan.partCount).toBe(512);
+    expect(plan.partCount).toBe(2048);
     expect(plan.partCount).toBeLessThanOrEqual(10_000);
-    expect(planParts(17_187_792_609).partSize).toBe(32 * 1024 * 1024);
+    expect(planParts(17_187_792_609).partSize).toBe(8 * 1024 * 1024);
   });
 
   it("stays under 10,000 parts for a multi-terabyte file", () => {
     const plan = planParts(5 * 1024 ** 4);
     expect(plan.partCount).toBeLessThanOrEqual(10_000);
-    expect(plan.partSize).toBeGreaterThanOrEqual(8 * 1024 * 1024);
+    expect(plan.partSize).toBeGreaterThan(8 * 1024 * 1024);
+    expect(planParts(10_000 * 8 * 1024 * 1024).partCount).toBe(10_000);
   });
 });
 
@@ -125,13 +131,16 @@ describe("transfer errors", () => {
   it("retries only transient part statuses", () => {
     expect(shouldRetryPartStatus(403, 1)).toBe(false);
     expect(shouldRetryPartStatus(0, 1)).toBe(true);
-    expect(shouldRetryPartStatus(503, 4)).toBe(true);
-    expect(shouldRetryPartStatus(503, 5)).toBe(false);
+    expect(shouldRetryPartStatus(503, PART_ATTEMPTS - 1)).toBe(true);
+    expect(shouldRetryPartStatus(503, PART_ATTEMPTS)).toBe(false);
+    expect(shouldRetryPartStatus(-1, 1)).toBe(false);
     expect(partUploadError(403, "<Code>AccessDenied</Code>", false)).toContain(
       "403",
     );
     expect(partUploadError(200, "", true)).toContain("ETag");
-    expect(partUploadError(0, "", false)).toMatch(/closed the connection/i);
+    expect(partUploadError(0, "", false)).toMatch(
+      /connection to Backblaze dropped/i,
+    );
   });
 
   it("rejects a part URL that carries an empty checksum", () => {
@@ -305,9 +314,8 @@ describe("multipart resume", () => {
       getResponseHeader() {
         return null;
       }
-      send(body: Blob) {
-        expect(body.type).toBe("");
-        expect(body.size).toBe(20);
+      send(body: ArrayBuffer) {
+        expect(body.byteLength).toBe(20);
         this.errorHandler?.();
       }
       set onload(_handler: () => void) {}
@@ -530,8 +538,8 @@ describe("multipart resume", () => {
       getResponseHeader() {
         return '"next"';
       }
-      send(body: Blob) {
-        expect(body.size).toBe(40);
+      send(body: ArrayBuffer) {
+        expect(body.byteLength).toBe(40);
         this.load?.();
       }
       set onload(handler: () => void) {
@@ -679,8 +687,8 @@ describe("multipart resume", () => {
       getResponseHeader() {
         return '"small"';
       }
-      send(body: Blob) {
-        expect(body.size).toBe(40);
+      send(body: ArrayBuffer) {
+        expect(body.byteLength).toBe(40);
         this.load?.();
       }
       set onload(handler: () => void) {
@@ -768,5 +776,295 @@ describe("multipart resume", () => {
     } catch (error) {
       expect(transferErrorMessage(error, "Resume failed.")).toMatch(/80 bytes/);
     }
+  });
+});
+
+describe("S3 error bodies", () => {
+  it("reads the code and message Backblaze returns", () => {
+    const body =
+      "<?xml version='1.0'?><Error><Code>SignatureDoesNotMatch</Code><Message>The request signature we calculated does not match.</Message></Error>";
+    expect(s3ErrorCode(body)).toBe("SignatureDoesNotMatch");
+    expect(s3ErrorMessage(body)).toMatch(/signature we calculated/);
+    expect(s3ErrorCode("")).toBeNull();
+    expect(s3ErrorMessage("plain text")).toBeNull();
+  });
+});
+
+describe("recoverable transfer errors", () => {
+  it("retries connection loss and server trouble, not rejections", () => {
+    expect(
+      isRecoverableTransferError(Object.assign(new Error("x"), { status: 0 })),
+    ).toBe(true);
+    expect(
+      isRecoverableTransferError(
+        Object.assign(new Error("x"), { status: 503 }),
+      ),
+    ).toBe(true);
+    expect(
+      isRecoverableTransferError(
+        Object.assign(new Error("x"), { status: 403 }),
+      ),
+    ).toBe(false);
+    expect(
+      isRecoverableTransferError(
+        Object.assign(new Error("x"), { status: -1, fileRead: true }),
+      ),
+    ).toBe(false);
+    expect(
+      isRecoverableTransferError(
+        new Error("Uploaded 3 of 9 parts. Resume to continue."),
+      ),
+    ).toBe(true);
+    expect(isRecoverableTransferError(new Error("Failed to fetch"))).toBe(true);
+    expect(
+      isRecoverableTransferError(
+        Object.assign(new Error("Action x failed"), {
+          errorCode: "upload_not_open",
+        }),
+      ),
+    ).toBe(false);
+    expect(isRecoverableTransferError(new Error("Upload cancelled."))).toBe(
+      false,
+    );
+  });
+});
+
+describe("auto-resume", () => {
+  beforeEach(() => {
+    call.mockReset();
+  });
+
+  const signer = async (partNumbers: number[]) =>
+    partNumbers.map((partNumber) => ({
+      partNumber,
+      url: `https://b2.test/${partNumber}`,
+    }));
+
+  it("lists stored parts and keeps going after a part runs out of retries", async () => {
+    const file = new File([new Uint8Array(30)], "clip.mp4");
+    let puts = 0;
+    const notes: Array<string | null> = [];
+    let completed: Array<{ partNumber: number; etag: string }> = [];
+    await runMultipartUpload({
+      id: "flaky",
+      file,
+      partSize: 10,
+      partCount: 3,
+      done: new Map(),
+      signal: new AbortController().signal,
+      onProgress: () => undefined,
+      sign: signer,
+      put: async (url) => {
+        puts += 1;
+        // Part 2 keeps failing until the second round. Backblaze stored it.
+        if (url.endsWith("/2") && puts < 6) {
+          throw Object.assign(new Error("reset"), { status: 0 });
+        }
+        return `"etag-${url.slice(-1)}"`;
+      },
+      listStored: async () => [{ partNumber: 2, etag: '"listed-2"' }],
+      roundDelayMs: () => 0,
+      onStatus: (note) => notes.push(note),
+      complete: async (parts) => {
+        completed = parts;
+      },
+    });
+    expect(completed.map((part) => part.partNumber)).toEqual([1, 2, 3]);
+    expect(completed.find((part) => part.partNumber === 2)?.etag).toBe(
+      '"listed-2"',
+    );
+    expect(notes[0]).toMatch(/Lost the connection to Backblaze/);
+    expect(notes[notes.length - 1]).toBeNull();
+  });
+
+  it("stops after several rounds that store nothing and says what Backblaze told the server", async () => {
+    const file = new File([new Uint8Array(10)], "clip.mp4");
+    let listed = 0;
+    let diagnosed = 0;
+    await expect(
+      runMultipartUpload({
+        id: "dead",
+        file,
+        partSize: 10,
+        partCount: 1,
+        done: new Map(),
+        signal: new AbortController().signal,
+        onProgress: () => undefined,
+        sign: signer,
+        put: async () => {
+          throw Object.assign(new Error(partUploadError(0, "", false)), {
+            status: 0,
+          });
+        },
+        listStored: async () => {
+          listed += 1;
+          return [];
+        },
+        diagnose: async () => {
+          diagnosed += 1;
+          return "Backblaze accepted a test part from the server.";
+        },
+        roundDelayMs: () => 0,
+        complete: async () => undefined,
+      }),
+    ).rejects.toThrow(
+      /connection to Backblaze dropped.*Backblaze accepted a test part/s,
+    );
+    expect(diagnosed).toBe(1);
+    expect(listed).toBe(3);
+  });
+
+  it("does not retry or probe a rejection the browser can read", async () => {
+    const file = new File([new Uint8Array(10)], "clip.mp4");
+    let listed = 0;
+    let diagnosed = 0;
+    await expect(
+      runMultipartUpload({
+        id: "denied",
+        file,
+        partSize: 10,
+        partCount: 1,
+        done: new Map(),
+        signal: new AbortController().signal,
+        onProgress: () => undefined,
+        sign: signer,
+        put: async () => {
+          throw Object.assign(new Error("Part upload failed (403)."), {
+            status: 403,
+          });
+        },
+        listStored: async () => {
+          listed += 1;
+          return [];
+        },
+        diagnose: async () => {
+          diagnosed += 1;
+          return null;
+        },
+        roundDelayMs: () => 0,
+        complete: async () => undefined,
+      }),
+    ).rejects.toThrow(/403/);
+    expect(listed).toBe(0);
+    expect(diagnosed).toBe(0);
+  });
+
+  it("explains an unreadable file instead of calling it a dropped connection", async () => {
+    const unreadable = {
+      size: 10,
+      slice: () => ({
+        size: 10,
+        arrayBuffer: async () => {
+          throw new DOMException("gone", "NotReadableError");
+        },
+      }),
+    } as unknown as Blob;
+    let diagnosed = 0;
+    await expect(
+      runMultipartUpload({
+        id: "unreadable",
+        file: unreadable,
+        partSize: 10,
+        partCount: 1,
+        done: new Map(),
+        signal: new AbortController().signal,
+        onProgress: () => undefined,
+        sign: signer,
+        listStored: async () => [],
+        diagnose: async () => {
+          diagnosed += 1;
+          return null;
+        },
+        roundDelayMs: () => 0,
+        complete: async () => undefined,
+      }),
+    ).rejects.toThrow(/could not read this file from disk/i);
+    expect(diagnosed).toBe(0);
+  });
+
+  it("abandons a part that stops moving instead of waiting minutes", async () => {
+    vi.useFakeTimers();
+    const file = new File([new Uint8Array(20)], "clip.mp4");
+    call.mockImplementation(async (name) => {
+      if (name === "list-dump-parts") {
+        return { id: "stall", parts: [{ partNumber: 1, etag: '"landed"' }] };
+      }
+      throw new Error(`unexpected ${String(name)}`);
+    });
+    const original = globalThis.XMLHttpRequest;
+    let aborts = 0;
+    class StalledXhr {
+      status = 0;
+      responseText = "";
+      timeout = 0;
+      upload: { onprogress?: unknown; onload?: unknown } = {};
+      onabort: (() => void) | null = null;
+      open() {}
+      set responseType(_value: string) {}
+      set withCredentials(_value: boolean) {}
+      getResponseHeader() {
+        return null;
+      }
+      send() {}
+      abort() {
+        aborts += 1;
+        this.onabort?.();
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", StalledXhr);
+    try {
+      let completed: Array<{ partNumber: number; etag: string }> = [];
+      const upload = runMultipartUpload({
+        id: "stall",
+        file,
+        partSize: 20,
+        partCount: 1,
+        done: new Map(),
+        signal: new AbortController().signal,
+        onProgress: () => undefined,
+        sign: signer,
+        complete: async (parts) => {
+          completed = parts;
+        },
+      });
+      await vi.advanceTimersByTimeAsync(PART_STALL_MS + 10_000);
+      await upload;
+      expect(aborts).toBe(1);
+      expect(completed).toEqual([{ partNumber: 1, etag: '"landed"' }]);
+    } finally {
+      vi.useRealTimers();
+      if (original) vi.stubGlobal("XMLHttpRequest", original);
+      else vi.unstubAllGlobals();
+    }
+  });
+
+  it("finishes without sending anything when Backblaze already holds the file", async () => {
+    const file = new File([new Uint8Array(40)], "done.mp4");
+    call.mockImplementation(async (name) => {
+      if (name === "list-dump-parts") {
+        throw Object.assign(new Error("missing"), {
+          errorCode: "upload_session_missing",
+        });
+      }
+      if (name === "restart-dump-upload") {
+        return {
+          id: "row-done",
+          completed: true,
+          message: "done.mp4 had already finished uploading.",
+        };
+      }
+      throw new Error(`unexpected ${String(name)}`);
+    });
+    const result = await resumeDumpFile({
+      id: "row-done",
+      file,
+      signal: new AbortController().signal,
+      onProgress: () => undefined,
+    });
+    expect(result.message).toMatch(/already finished/);
+    expect(call.mock.calls.map((entry) => entry[0])).toEqual([
+      "list-dump-parts",
+      "restart-dump-upload",
+    ]);
   });
 });

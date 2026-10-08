@@ -11,6 +11,7 @@ import {
   CreateBucketCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
+  GetBucketCorsCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
@@ -23,7 +24,7 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-import { browserPartUrlProblem } from "./parts.js";
+import { browserPartUrlProblem, s3ErrorCode, s3ErrorMessage } from "./parts.js";
 
 export const B2_ENV_KEYS = [
   "B2_S3_ENDPOINT",
@@ -223,6 +224,8 @@ export {
   isMissingMultipartUpload,
   partCountFor,
   planParts,
+  s3ErrorCode,
+  s3ErrorMessage,
 } from "./parts.js";
 
 export function contentTypeForName(filename: string): string {
@@ -235,6 +238,18 @@ export function contentTypeForName(filename: string): string {
   if (ext === "png") return "image/png";
   if (ext === "pdf") return "application/pdf";
   return "application/octet-stream";
+}
+
+function siteOrigin(): string {
+  for (const value of [process.env.APP_URL, process.env.BETTER_AUTH_URL]) {
+    if (!value) continue;
+    try {
+      return new URL(value).origin;
+    } catch {
+      // Try the next value.
+    }
+  }
+  return BUCKET_CORS_ORIGINS[0];
 }
 
 function bucketCorsOrigins(): string[] {
@@ -444,6 +459,159 @@ export async function completeUpload(input: {
     };
   } catch {
     return { sizeBytes: null, contentType: null };
+  }
+}
+
+/**
+ * The stored object for a key, or null when Backblaze has none. Used to tell
+ * "the upload never finished" from "CompleteMultipartUpload succeeded but the
+ * response never reached the browser".
+ */
+export async function headObject(
+  key: string,
+): Promise<{ sizeBytes: number; contentType: string | null } | null> {
+  const settings = requireSettings();
+  try {
+    const head = await clientFor(settings).send(
+      new HeadObjectCommand({ Bucket: settings.bucket, Key: key }),
+    );
+    return {
+      sizeBytes:
+        typeof head.ContentLength === "number" ? head.ContentLength : 0,
+      contentType: head.ContentType ?? null,
+    };
+  } catch (err) {
+    const status =
+      err && typeof err === "object" && "$metadata" in err
+        ? (err as { $metadata?: { httpStatusCode?: number } }).$metadata
+            ?.httpStatusCode
+        : undefined;
+    const name =
+      err && typeof err === "object" && "name" in err
+        ? String((err as { name?: unknown }).name)
+        : "";
+    if (status === 404 || name === "NotFound" || name === "NoSuchKey") {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export type PartProbe = {
+  ok: boolean;
+  /** HTTP status Backblaze returned to the server-side PUT, 0 if none. */
+  status: number;
+  code: string | null;
+  message: string;
+  /** Whether the bucket CORS rule allows the site origin and exposes ETag. */
+  cors: "ok" | "origin_missing" | "etag_not_exposed" | "unknown";
+};
+
+// B2 only enforces its 5 MB minimum part size when an upload is completed,
+// but probe with a full-size part so a size rule cannot hide a real answer.
+const PROBE_PART_BYTES = 5 * 1024 * 1024;
+const PROBE_TIMEOUT_MS = 20_000;
+
+async function probeCors(
+  settings: B2Settings,
+  origin: string | null,
+): Promise<PartProbe["cors"]> {
+  try {
+    const cors = await clientFor(settings).send(
+      new GetBucketCorsCommand({ Bucket: settings.bucket }),
+    );
+    const rules = cors.CORSRules ?? [];
+    const matching = origin
+      ? rules.filter((rule) =>
+          (rule.AllowedOrigins ?? []).some(
+            (allowed) => allowed === "*" || allowed === origin,
+          ),
+        )
+      : rules;
+    if (matching.length === 0) return "origin_missing";
+    const exposesEtag = matching.some((rule) =>
+      (rule.ExposeHeaders ?? []).some((name) => name.toLowerCase() === "etag"),
+    );
+    return exposesEtag ? "ok" : "etag_not_exposed";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * Upload one throwaway part from the server through the same presign the
+ * browser uses, then abort. Backblaze error responses omit CORS headers, so
+ * the browser only ever sees status 0. The server can read the real status and
+ * S3 error code, which says whether Backblaze rejects the signed request or
+ * the break is between the browser and Backblaze.
+ */
+export async function probePartUpload(input: {
+  orgId: string;
+  origin?: string | null;
+}): Promise<PartProbe> {
+  const settings = requireSettings();
+  const key = `org/${input.orgId}/.probe/${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+  const cors = await probeCors(settings, input.origin ?? siteOrigin());
+  let uploadId: string | null = null;
+  try {
+    uploadId = await createUpload({
+      key,
+      contentType: "application/octet-stream",
+    });
+    const [signed] = await signParts({ key, uploadId, partNumbers: [1] });
+    const response = await fetch(signed.url, {
+      method: "PUT",
+      body: new Uint8Array(PROBE_PART_BYTES),
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    const text = response.ok ? "" : await response.text().catch(() => "");
+    const etag = response.headers.get("etag");
+    if (response.ok && etag) {
+      return {
+        ok: true,
+        status: response.status,
+        code: null,
+        message:
+          "Backblaze accepted a test part from the server using the same signed URL the browser gets.",
+        cors,
+      };
+    }
+    const code = s3ErrorCode(text);
+    const detail = s3ErrorMessage(text);
+    return {
+      ok: false,
+      status: response.status,
+      code,
+      message: response.ok
+        ? "Backblaze accepted the test part but did not return an ETag."
+        : `Backblaze rejected a test part with ${response.status}${code ? ` ${code}` : ""}${detail ? `: ${detail}` : ""}.`,
+      cors,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Probe failed.";
+    return {
+      ok: false,
+      status: 0,
+      code: null,
+      message: `The test upload from the server failed: ${message.slice(0, 200)}`,
+      cors,
+    };
+  } finally {
+    if (uploadId) {
+      try {
+        await clientFor(settings).send(
+          new AbortMultipartUploadCommand({
+            Bucket: settings.bucket,
+            Key: key,
+            UploadId: uploadId,
+          }),
+        );
+      } catch {
+        // The probe upload holds nothing the library can see.
+      }
+    }
   }
 }
 

@@ -12,6 +12,7 @@ export {
   downloadToFile,
   ensureBucket,
   ensureBucketCors,
+  headObject,
   isMissingMultipartUpload,
   listBucketPage,
   listUploadedParts,
@@ -20,10 +21,11 @@ export {
   partCountFor,
   planParts,
   presignGet,
+  probePartUpload,
   publicB2Error,
   safeBasename,
   signParts,
   uploadFile,
 } from "@swafford-workspace/object-storage";
 
-export type { B2EnvKey } from "@swafford-workspace/object-storage";
+export type { B2EnvKey, PartProbe } from "@swafford-workspace/object-storage";

@@ -58,6 +58,8 @@ type Transfer = {
   loaded: number;
   total: number;
   error?: string;
+  /** Shown while the upload waits to reconnect. */
+  note?: string;
 };
 
 type Preview = {
@@ -117,6 +119,18 @@ export function DumpLibrary() {
     const timer = window.setTimeout(() => setQuery(search.trim()), 200);
     return () => window.clearTimeout(timer);
   }, [search]);
+
+  // Closing the tab ends a running upload. Warn while parts are still sending.
+  const sending = transfers.some((transfer) => !transfer.error);
+  useEffect(() => {
+    if (!sending) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [sending]);
 
   useEffect(() => {
     folderInput.current?.setAttribute("webkitdirectory", "");
@@ -210,6 +224,15 @@ export function DumpLibrary() {
                 ),
               );
             },
+            onStatus: (note) => {
+              setTransfers((current) =>
+                current.map((transfer) =>
+                  transfer.key === item.key
+                    ? { ...transfer, note: note ?? undefined }
+                    : transfer,
+                ),
+              );
+            },
           });
           setTransfers((current) =>
             current.filter((transfer) => transfer.key !== item.key),
@@ -219,7 +242,7 @@ export function DumpLibrary() {
           setTransfers((current) =>
             current.map((transfer) =>
               transfer.key === item.key
-                ? { ...transfer, error: message }
+                ? { ...transfer, error: message, note: undefined }
                 : transfer,
             ),
           );
@@ -257,6 +280,15 @@ export function DumpLibrary() {
             ),
           );
         },
+        onStatus: (note) => {
+          setTransfers((current) =>
+            current.map((transfer) =>
+              transfer.key === key
+                ? { ...transfer, note: note ?? undefined }
+                : transfer,
+            ),
+          );
+        },
       });
       setTransfers((current) =>
         current.filter((transfer) => transfer.key !== key),
@@ -267,7 +299,9 @@ export function DumpLibrary() {
       const message = transferErrorMessage(error, "Resume failed.");
       setTransfers((current) =>
         current.map((transfer) =>
-          transfer.key === key ? { ...transfer, error: message } : transfer,
+          transfer.key === key
+            ? { ...transfer, error: message, note: undefined }
+            : transfer,
         ),
       );
       setNotice(message);
@@ -468,6 +502,10 @@ export function DumpLibrary() {
               {transfer.error ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   {transfer.error}
+                </p>
+              ) : transfer.note ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {transfer.note}
                 </p>
               ) : null}
             </li>
