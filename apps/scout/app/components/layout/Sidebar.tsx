@@ -449,7 +449,7 @@ function ScoutNav({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate();
   const onChat = location.pathname.startsWith("/chat/");
   const links = [
-    { to: "/home", label: "Intelligence", icon: IconChartBar },
+    { to: "/home", label: "Niche pulse", icon: IconChartBar },
     { to: "/keywords", label: "Keywords", icon: IconHash },
     { to: "/competitors", label: "Competitors", icon: IconUsers },
     { to: "/trends", label: "Trends", icon: IconTrendingUp },

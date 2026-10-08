@@ -8,7 +8,10 @@ Read `scout-guardrails` before recreates, audits, or brand copy. Framework skill
 
 ## Product
 
-- Home is the niche pulse: breakouts, trend terms, watchlist, filters.
+- Home is the niche pulse: breakouts, trend terms, watchlist, filters. Its header always carries a "Search keywords" link next to Refresh pulse.
+- Home has three states, decided by `homeState` in `shared/guidance.ts`: no key and nothing stored shows only an "Add the key in Settings" panel; a key and nothing stored shows only a "Run first pulse" panel (no filters, no empty lists); anything stored shows the full board. Keep first-run copy to one sentence and one button.
+- Every empty list says what to do next: clear filters, run the pulse, or open Keywords. Plain words over jargon: "fades in about N days", "its usual views", "demand (estimate)". Volume and competition stay labeled as estimates.
+- A keyword seed button runs the search. `/keywords?term=` runs it on arrival.
 - A cold Niche pulse (key set, every watchlist row unfetched) auto-runs `scout-intelligence-report` once, then waits 30 minutes. It does not re-fire after rows are fetched or marked missing.
 - A ScrapeCreators not-found on one handle is a skip. The rest of the pulse still saves. `warning` names the handles. Do not tell the user to link TikTok or Instagram.
 - A single Watch shows “Watching…” on that row, then refreshes the list. The error stays on the row when the fetch fails.

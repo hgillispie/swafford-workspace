@@ -147,16 +147,18 @@ describe("brandbot delivery status", () => {
   it("tells an admin whether bearer reports reach their workspace", async () => {
     const { brandbotDeliveryFor } =
       await import("../server/lib/pulse-access.js");
-    expect(brandbotDeliveryFor(CONFIGURED_ORG)).toBe("connected");
-    expect(brandbotDeliveryFor(CONFIGURED_ORG.toUpperCase())).toBe("connected");
-    expect(brandbotDeliveryFor(OTHER_ORG_A)).toBe("other_workspace");
-    try {
-      delete process.env.PULSE_INGEST_ORG_ID;
-      expect(brandbotDeliveryFor(CONFIGURED_ORG)).toBe("not_set");
-      process.env.PULSE_INGEST_ORG_ID = "not-a-32-char-hex-id";
-      expect(brandbotDeliveryFor(CONFIGURED_ORG)).toBe("invalid");
-    } finally {
-      process.env.PULSE_INGEST_ORG_ID = CONFIGURED_ORG;
-    }
+    expect(brandbotDeliveryFor(CONFIGURED_ORG, CONFIGURED_ORG)).toBe(
+      "connected",
+    );
+    expect(
+      brandbotDeliveryFor(CONFIGURED_ORG, CONFIGURED_ORG.toUpperCase()),
+    ).toBe("connected");
+    expect(brandbotDeliveryFor(OTHER_ORG_A, CONFIGURED_ORG)).toBe(
+      "other_workspace",
+    );
+    expect(brandbotDeliveryFor(CONFIGURED_ORG, "")).toBe("not_set");
+    expect(brandbotDeliveryFor(CONFIGURED_ORG, "not-a-32-char-hex-id")).toBe(
+      "invalid",
+    );
   });
 });

@@ -29,6 +29,13 @@ No secret values in this note. Set credentials only in the host environment.
 
 ## Scout dummyproof UX + Keywords link
 
-**Not started.** The agent for it stopped after only reading code. No Scout files were changed for this.
+**Done.** `apps/scout/shared/guidance.ts` decides what Niche pulse shows, and `guidance.spec.ts` plus `screens.spec.tsx` cover each state.
 
-**Intended scope.** Make Scout foolproof for Matt: clear empty and first-run states, plain-language guidance, and obvious next actions. Add a link to Keywords.
+- No key and nothing stored: one "Add the key in Settings" panel. No empty lists, no failing Refresh button.
+- Key set, nothing stored: one sentence and one "Run first pulse" button. No filters or empty lists. The cold auto-run still fires once, and the panel shows progress while it does.
+- Anything stored: the full board. Empty lists say why and offer "Clear filters" when clearing would help.
+- A "Search keywords" link sits beside Refresh pulse on Niche pulse and on the Paste packs empty state.
+- Keywords: seed buttons run the search, `/keywords?term=` runs on arrival, no-result searches say what to try, and results label demand and competition as estimates.
+- Plain words replace jargon ("fades in about N days", "its usual views", "not checked yet"). The sidebar and command menu say "Niche pulse" like the page.
+
+**Not verified in a browser.** The screens were render-tested with mocked data, not clicked through against a live ScrapeCreators key.

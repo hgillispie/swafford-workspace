@@ -137,7 +137,7 @@ function AppContent() {
           ) : null}
           {!isChatThread && location.pathname !== "/home" ? (
             <CommandMenu.Item onSelect={() => navigate("/home")}>
-              Intelligence
+              Niche pulse
             </CommandMenu.Item>
           ) : null}
           <CommandMenu.Item

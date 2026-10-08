@@ -6,10 +6,13 @@ import { Link } from "react-router";
 export function ScoutPage({
   title,
   action,
+  providerNote = true,
   children,
 }: {
   title: string;
   action?: ReactNode;
+  /** A screen that already says the key is missing turns this off. */
+  providerNote?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -18,7 +21,7 @@ export function ScoutPage({
         <h1 className="text-lg font-medium">{title}</h1>
         {action}
       </div>
-      <ProviderNote />
+      {providerNote ? <ProviderNote /> : null}
       {children}
     </div>
   );

@@ -104,11 +104,13 @@ export type BrandbotDelivery =
  * Where sessionless Brandbot reports land, relative to `orgId`. Never throws,
  * so an admin screen can show the state instead of failing.
  */
-export function brandbotDeliveryFor(orgId: string): BrandbotDelivery {
-  const raw = rawIngestOrgId();
-  if (!raw) return "not_set";
-  if (!INGEST_ORG_ID_PATTERN.test(raw)) return "invalid";
-  return raw.toLowerCase() === orgId.toLowerCase()
+export function brandbotDeliveryFor(
+  orgId: string,
+  configured: string = rawIngestOrgId(),
+): BrandbotDelivery {
+  if (!configured) return "not_set";
+  if (!INGEST_ORG_ID_PATTERN.test(configured)) return "invalid";
+  return configured.toLowerCase() === orgId.toLowerCase()
     ? "connected"
     : "other_workspace";
 }

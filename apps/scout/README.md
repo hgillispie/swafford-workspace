@@ -17,7 +17,7 @@ No other Scout-specific secret is required. Auth and Postgres are the shared wor
 
 ## What is live
 
-- Intelligence home: breakouts, trend terms, watchlist, search/trend, geo, and dyno-safe filters
+- Niche pulse (home): breakouts, trend terms, watchlist, search/trend, geo, and dyno-safe filters
 - Keyword finder and hashtag search
 - Competitor profile, recent videos, hook and CTA patterns, observed sound names
 - Trend discovery (two seed keywords plus the trending feed)

@@ -8,6 +8,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import {
+  CLAIM_OPTIONS,
+  PLACE_OPTIONS,
+  SEARCH_TYPE_OPTIONS,
+  emptyFilterHint,
+  homeState,
+  intentLabel,
+  noResultsText,
+  outlierText,
+  termTimingText,
+  watchStatusText,
+} from "@shared/guidance";
+import {
   PULSE_SEED_STORAGE_KEY,
   pulseNeedsLiveSeed,
   pulseSeedAllowed,
@@ -103,15 +115,20 @@ function useBoard(filters: {
   return useActionQuery("scout-list", filters);
 }
 
+type SearchFilter = "all" | "search" | "trend" | "hybrid";
+type GeoFilter = "all" | "upstate_sc" | "wnc" | "east_tn" | "national";
+type DynoFilter = "all" | "safe";
+
 export function IntelligenceScreen() {
-  const [searchVsTrend, setSearchVsTrend] = useState<"all" | "search" | "trend" | "hybrid">("all");
-  const [geo, setGeo] = useState<"all" | "upstate_sc" | "wnc" | "east_tn" | "national">("all");
-  const [dyno, setDyno] = useState<"all" | "safe">("safe");
+  const [searchVsTrend, setSearchVsTrend] = useState<SearchFilter>("all");
+  const [geo, setGeo] = useState<GeoFilter>("all");
+  const [dyno, setDyno] = useState<DynoFilter>("safe");
   const filters = { searchVsTrend, geo, dyno };
   const board = useBoard(filters);
   const refresh = useActionMutation("scout-intelligence-report");
   const data = board.data as Board | undefined;
   const seeded = useRef(false);
+  const state = data ? homeState(data) : null;
   const cold = data ? pulseNeedsLiveSeed(data) : false;
   useEffect(() => {
     if (!data || refresh.isPending || seeded.current || !pulseNeedsLiveSeed(data)) return;
@@ -135,46 +152,58 @@ export function IntelligenceScreen() {
   const seeding = cold && (refresh.isPending || board.isFetching);
   const notice = noticeText(data, refresh.data);
   const untouched = (data?.watchlist.length ?? 0) > 0 && (data?.watchlist ?? []).every((row) => !row.fetched && !row.missed);
+  const runPulse = () =>
+    refresh.mutate(
+      {},
+      {
+        onSuccess: () => board.refetch(),
+        onError: (error) => {
+          toast.error(actionMessage(error));
+          void board.refetch();
+        },
+      },
+    );
   return (
     <ScoutPage
       title="Niche pulse"
+      providerNote={state !== "needs_key"}
       action={
-        <Button
-          type="button"
-          disabled={refresh.isPending}
-          onClick={() =>
-            refresh.mutate(
-              {},
-              {
-                onSuccess: () => board.refetch(),
-                onError: (error) => {
-                  toast.error(actionMessage(error));
-                  void board.refetch();
-                },
-              },
-            )
-          }
-        >
-          <PendingIcon pending={refresh.isPending} />
-          Refresh pulse
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link to="/keywords">Search keywords</Link>
+          </Button>
+          {state === "ready" ? (
+            <Button type="button" disabled={refresh.isPending} onClick={runPulse}>
+              <PendingIcon pending={refresh.isPending} />
+              Refresh pulse
+            </Button>
+          ) : null}
+        </div>
       }
     >
-      <FilterBar
-        searchVsTrend={searchVsTrend}
-        geo={geo}
-        dyno={dyno}
-        onSearch={setSearchVsTrend}
-        onGeo={setGeo}
-        onDyno={setDyno}
-      />
       <ErrorNote error={refresh.error ?? board.error} />
-      {untouched ? <FirstRunNote pending={refresh.isPending} /> : null}
-      {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
-      {board.isPending || seeding ? (
+      {board.isPending ? (
         <RowsSkeleton />
+      ) : state === "needs_key" ? (
+        <Panel>
+          <p className="text-sm">Scout needs a ScrapeCreators key to pull live TikTok results.</p>
+          <Button asChild size="sm" className="mt-3">
+            <Link to="/settings">Add the key in Settings</Link>
+          </Button>
+        </Panel>
+      ) : state === "first_run" ? (
+        <StartPanel pending={refresh.isPending || seeding} onRun={runPulse} />
       ) : (
         <div className="grid gap-4">
+          <FilterBar
+            searchVsTrend={searchVsTrend}
+            geo={geo}
+            dyno={dyno}
+            onSearch={setSearchVsTrend}
+            onGeo={setGeo}
+            onDyno={setDyno}
+          />
+          {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
           {data?.pulse ? (
             <Panel>
               <p className="text-sm">
@@ -185,7 +214,15 @@ export function IntelligenceScreen() {
               </Link>
             </Panel>
           ) : null}
-          <BreakoutList videos={data?.breakouts ?? []} untouched={untouched} />
+          <BreakoutList
+            videos={data?.breakouts ?? []}
+            untouched={untouched}
+            filters={filters}
+            onClear={() => {
+              setSearchVsTrend("all");
+              setGeo("all");
+            }}
+          />
           <TermList terms={data?.terms ?? []} untouched={untouched} />
           <WatchList
             rows={data?.watchlist ?? []}
@@ -200,6 +237,7 @@ export function IntelligenceScreen() {
           <Button
             type="button"
             variant="outline"
+            className="justify-self-start"
             onClick={() =>
               sendToAgentChat({
                 openSidebar: true,
@@ -217,13 +255,39 @@ export function IntelligenceScreen() {
   );
 }
 
+/** First visit with a key and nothing stored: one sentence, one button. */
+function StartPanel({ pending, onRun }: { pending: boolean; onRun: () => void }) {
+  return (
+    <Panel>
+      {pending ? (
+        <p className="flex items-center gap-2 text-sm" role="status">
+          <PendingIcon pending />
+          Pulling live TikTok results. This takes about a minute.
+        </p>
+      ) : (
+        <>
+          <p className="text-sm">
+            Run your first pulse to see which videos and phrases are working in your niche.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button type="button" onClick={onRun}>
+              Run first pulse
+            </Button>
+            <span className="text-xs text-muted-foreground">No TikTok login needed.</span>
+          </div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
 function FilterBar(props: {
-  searchVsTrend: "all" | "search" | "trend" | "hybrid";
-  geo: "all" | "upstate_sc" | "wnc" | "east_tn" | "national";
-  dyno: "all" | "safe";
-  onSearch: (value: "all" | "search" | "trend" | "hybrid") => void;
-  onGeo: (value: "all" | "upstate_sc" | "wnc" | "east_tn" | "national") => void;
-  onDyno: (value: "all" | "safe") => void;
+  searchVsTrend: SearchFilter;
+  geo: GeoFilter;
+  dyno: DynoFilter;
+  onSearch: (value: SearchFilter) => void;
+  onGeo: (value: GeoFilter) => void;
+  onDyno: (value: DynoFilter) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -231,34 +295,10 @@ function FilterBar(props: {
         label="Search or trend"
         value={props.searchVsTrend}
         onChange={props.onSearch}
-        options={[
-          ["all", "All"],
-          ["search", "Search"],
-          ["trend", "Trend"],
-          ["hybrid", "Hybrid"],
-        ] as const}
+        options={SEARCH_TYPE_OPTIONS}
       />
-      <Select
-        label="Geo"
-        value={props.geo}
-        onChange={props.onGeo}
-        options={[
-          ["all", "All geos"],
-          ["upstate_sc", "Upstate SC"],
-          ["wnc", "WNC"],
-          ["east_tn", "East TN"],
-          ["national", "National"],
-        ] as const}
-      />
-      <Select
-        label="Dyno"
-        value={props.dyno}
-        onChange={props.onDyno}
-        options={[
-          ["safe", "Dyno-safe"],
-          ["all", "Include dyno claims"],
-        ] as const}
-      />
+      <Select label="Place" value={props.geo} onChange={props.onGeo} options={PLACE_OPTIONS} />
+      <Select label="Dyno claims" value={props.dyno} onChange={props.onDyno} options={CLAIM_OPTIONS} />
     </div>
   );
 }
@@ -272,7 +312,7 @@ function Select<T extends string>({
   label: string;
   value: T;
   onChange: (value: T) => void;
-  options: readonly [T, string][];
+  options: readonly (readonly [T, string])[];
 }) {
   return (
     <label className="flex items-center gap-2 text-sm">
@@ -293,14 +333,32 @@ function Select<T extends string>({
   );
 }
 
-function BreakoutList({ videos, untouched = false }: { videos: VideoHit[]; untouched?: boolean }) {
+function BreakoutList({
+  videos,
+  untouched = false,
+  filters,
+  onClear,
+}: {
+  videos: VideoHit[];
+  untouched?: boolean;
+  filters: { searchVsTrend: SearchFilter; geo: GeoFilter; dyno: DynoFilter };
+  onClear: () => void;
+}) {
+  const hint = emptyFilterHint(filters);
   return (
     <div className="grid gap-2">
       {videos.length === 0 ? (
         <Panel>
           <p className="text-sm">
-            {untouched ? "Breakouts land here after Refresh pulse." : "No breakouts in this filter."}
+            {untouched
+              ? "Breakouts show up here after Refresh pulse."
+              : (hint?.text ?? "No breakouts yet. Refresh pulse to look again.")}
           </p>
+          {!untouched && hint?.canClear ? (
+            <Button type="button" size="sm" variant="outline" className="mt-3" onClick={onClear}>
+              Clear filters
+            </Button>
+          ) : null}
         </Panel>
       ) : (
         videos.slice(0, 8).map((video) => <VideoRow key={video.id} video={video} />)
@@ -322,13 +380,14 @@ function VideoRow({ video }: { video: VideoHit }) {
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {formatCount(video.views)} views
-            {video.outlierScore != null ? ` · ${video.outlierScore}× median` : ""}
+            {video.outlierScore != null ? ` · ${outlierText(video.outlierScore)}` : ""}
             {video.soundName ? ` · ${video.soundName}` : ""}
           </p>
         </div>
         <Button
           type="button"
           size="sm"
+          title="Build a paste pack for your own version of this video"
           disabled={recreate.isPending}
           onClick={() =>
             recreate.mutate(
@@ -381,14 +440,14 @@ function TermList({ terms, untouched = false }: { terms: TermRow[]; untouched?: 
             <div>
               <p className="text-sm font-medium">{term.label}</p>
               <p className="text-xs text-muted-foreground">
-                {term.classification} · {term.halfLifeDays}d half-life · {term.whyNow}
+                {termTimingText(term.classification, term.halfLifeDays)} · {term.whyNow}
               </p>
             </div>
             <Link
               to={`/keywords?term=${encodeURIComponent(term.label)}`}
-              className="text-sm text-primary underline"
+              className="shrink-0 text-sm text-primary underline"
             >
-              Videos
+              See videos
             </Link>
           </div>
         </Panel>
@@ -466,15 +525,8 @@ function WatchList({
               <div>
                 <p className="text-sm font-medium">{row.displayName}</p>
                 <p className="text-xs text-muted-foreground">
-                  @{row.handle} · {row.role.replace(/_/g, " ")}
-                  {watching
-                    ? " · watching…"
-                    : row.fetched
-                      ? ` · ${formatCount(row.followers)} followers`
-                      : row.missed
-                        ? " · no public record"
-                        : " · not fetched"}
-                  {row.outlierCount > 0 ? ` · ${row.outlierCount} breakouts` : ""}
+                  @{row.handle} · {row.role.replace(/_/g, " ")} ·{" "}
+                  {watchStatusText(row, watching, formatCount)}
                 </p>
                 {message && !watching ? <p className="mt-1 text-xs text-destructive">{message}</p> : null}
               </div>
@@ -513,6 +565,7 @@ function WatchList({
 export function KeywordScreen() {
   const [params] = useSearchParams();
   const [query, setQuery] = useState(params.get("term") ?? "");
+  const [searched, setSearched] = useState("");
   const search = useActionMutation("scout-search-keywords");
   const hashtag = useActionMutation("scout-search-hashtags");
   const pending = search.isPending || hashtag.isPending;
@@ -528,6 +581,24 @@ export function KeywordScreen() {
     | undefined;
   const board = useActionQuery("scout-list", {});
   const seeds = ((board.data as Board | undefined)?.seeds ?? []).slice(0, 5);
+  function run(raw: string) {
+    const term = raw.trim();
+    if (!term) return;
+    setQuery(term);
+    setSearched(term);
+    if (term.startsWith("#")) hashtag.mutate({ hashtag: term });
+    else search.mutate({ query: term });
+  }
+  // A link from Niche pulse (/keywords?term=...) should show results, not an
+  // input the visitor still has to submit.
+  const arrivedWith = useRef(params.get("term")?.trim() ?? "");
+  useEffect(() => {
+    const term = arrivedWith.current;
+    if (!term) return;
+    arrivedWith.current = "";
+    run(term);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <ScoutPage
       title="Keyword finder"
@@ -543,10 +614,7 @@ export function KeywordScreen() {
         className="flex gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          const term = query.trim();
-          if (!term) return;
-          if (term.startsWith("#")) hashtag.mutate({ hashtag: term });
-          else search.mutate({ query: term });
+          run(query);
         }}
       >
         <Input
@@ -558,39 +626,49 @@ export function KeywordScreen() {
       </form>
       <ErrorNote error={search.error ?? hashtag.error} />
       {data?.warning ? <p className="text-sm">{data.warning}</p> : null}
-      {data ? (
+      {pending ? (
+        <RowsSkeleton />
+      ) : data ? (
         <div className="grid gap-3">
           <Panel>
             <p className="text-sm">
-              {data.intent} · volume proxy {data.volume.volumeProxy} · competition proxy{" "}
-              {data.volume.competitionProxy}
+              {intentLabel(data.intent)} · demand (estimate) {data.volume.volumeProxy} · competition
+              (estimate) {data.volume.competitionProxy}
             </p>
             <p className="text-xs text-muted-foreground">{data.volume.note}</p>
             {data.related.length > 0 ? (
               <p className="mt-2 text-sm">Related tags: {data.related.join(", ")}</p>
             ) : null}
           </Panel>
-          {data.videos.map((video) => (
-            <VideoRow key={video.id} video={video} />
-          ))}
+          {data.videos.length === 0 ? (
+            <Panel>
+              <p className="text-sm">{noResultsText(searched || data.query)}</p>
+            </Panel>
+          ) : (
+            data.videos.map((video) => <VideoRow key={video.id} video={video} />)
+          )}
         </div>
       ) : (
-        <details open className="text-sm">
-          <summary>Seed library</summary>
-          <ul className="mt-2 grid gap-1">
-            {seeds.map((seed) => (
-              <li key={seed.term}>
-                <button type="button" className="underline" onClick={() => setQuery(seed.term)}>
+        <Panel>
+          <p className="text-sm">Type what a customer would search, or start with one of these.</p>
+          {board.isPending ? (
+            <div className="mt-3 h-8 animate-pulse rounded-md bg-muted" />
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {seeds.map((seed) => (
+                <Button
+                  key={seed.term}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => run(seed.term)}
+                >
                   {seed.term}
-                </button>
-                <span className="text-muted-foreground">
-                  {" "}
-                  · {seed.searchVsTrend} · proxy {seed.volumeProxy}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </details>
+                </Button>
+              ))}
+            </div>
+          )}
+        </Panel>
       )}
     </ScoutPage>
   );
@@ -711,7 +789,7 @@ export function TrendScreen() {
       {data?.warning ? <p className="text-sm">{data.warning}</p> : null}
       {data ? <TermList terms={data.terms} /> : (
         <p className="text-sm text-muted-foreground">
-          Two seed searches and one trending feed. Cached hits do not spend a credit.
+          Finds phrases climbing in your niche right now. Checking again soon reuses saved results and costs nothing.
         </p>
       )}
     </ScoutPage>
@@ -956,10 +1034,15 @@ export function RecreateScreen() {
         <RowsSkeleton />
       ) : rows.length === 0 ? (
         <Panel>
-          <p className="text-sm">Recreate a breakout to build a paste pack.</p>
-          <Link to="/home" className="text-sm text-primary underline">
-            Open Niche pulse
-          </Link>
+          <p className="text-sm">Recreate a video you like to build a paste pack.</p>
+          <div className="mt-2 flex flex-wrap gap-4">
+            <Link to="/home" className="text-sm text-primary underline">
+              Open Niche pulse
+            </Link>
+            <Link to="/keywords" className="text-sm text-primary underline">
+              Search keywords
+            </Link>
+          </div>
         </Panel>
       ) : (
         <div className="grid gap-3">
@@ -1028,6 +1111,9 @@ export function StubScreen({ platform }: { platform: string }) {
     <ScoutPage title={platform}>
       <Panel>
         <p className="text-sm">Coming later — TikTok doesn't need account linking.</p>
+        <Link to="/home" className="text-sm text-primary underline">
+          Back to Niche pulse
+        </Link>
       </Panel>
     </ScoutPage>
   );
@@ -1035,18 +1121,6 @@ export function StubScreen({ platform }: { platform: string }) {
 
 function actionMessage(error: unknown) {
   return actionErrorMessage(error);
-}
-
-function FirstRunNote({ pending }: { pending: boolean }) {
-  return (
-    <Panel>
-      <p className="text-sm">
-        {pending
-          ? "Pulling live search. No TikTok login needed."
-          : "No TikTok login needed — click Refresh pulse. Live search uses ScrapeCreators."}
-      </p>
-    </Panel>
-  );
 }
 
 function SeedAccounts({
