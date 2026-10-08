@@ -1,13 +1,13 @@
 import { defineAction, fail } from "@agent-native/core/action";
 import { z } from "zod";
 
-import { requireMember } from "../server/lib/pulse-access.js";
+import { isOrgAdmin, requireMember } from "../server/lib/pulse-access.js";
 import { upsertPulseReport } from "../server/lib/pulse-ingest.js";
 import { pulseIngestSchema } from "../shared/pulse-schema.js";
 
 export default defineAction({
   description:
-    "Fallback ingest when Brandbot dropped pulse-{reportDate}-{source}.json beside the Drive PDF. Pass the file's JSON text. A Drive file id alone is recorded as not fetched — Pulse does not download Drive bytes.",
+    "Admin-only fallback when a Brandbot report did not arrive on its own. Pass the report JSON text. A Drive file id alone is recorded as not fetched — Pulse does not download Drive bytes.",
   schema: z.object({
     json: z
       .string()
@@ -28,6 +28,12 @@ export default defineAction({
   http: { method: "POST" },
   run: async ({ json, driveFileId, driveUrl }) => {
     const actor = await requireMember();
+    if (!isOrgAdmin(actor.role)) {
+      fail("Only an owner or admin can store a pasted report.", {
+        statusCode: 403,
+        errorCode: "forbidden",
+      });
+    }
     if (!json?.trim()) {
       return {
         ingested: false,
@@ -35,10 +41,8 @@ export default defineAction({
         driveFileId: driveFileId ?? null,
         driveUrl: driveUrl ?? null,
         expectedFileName: "pulse-{reportDate}-{source}.json",
-        message:
-          "Drive file pull is not connected. Download pulse-{reportDate}-{source}.json from that Drive folder and pass it as json, or POST pulse-ingest with the bearer secret.",
-        summary:
-          "JSON drop path is documented. No Drive download ran and nothing was written.",
+        message: "Paste the report text. Pulse does not download files.",
+        summary: "Nothing was written.",
       };
     }
     let parsed: unknown;

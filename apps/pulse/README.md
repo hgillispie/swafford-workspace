@@ -20,6 +20,16 @@ Authorization: Bearer <PULSE_INGEST_SECRET>
 Content-Type: application/json
 ```
 
+The bearer call has no session. When `PULSE_INGEST_ORG_ID` is set, the report
+is stored on that organization and other organizations are not considered.
+The value is one `organizations.id`: 32 hex characters, no dashes (a UUID
+with the hyphens removed). Case is normalized to lowercase. Do not commit
+it. Set it in the Netlify site environment. When the variable is unset,
+bearer ingest keeps the previous lookup: the request organization, or the
+only organization in the database, or 503 `org_unresolved` when several
+organizations exist. A set value that is not 32 hex characters, or that
+does not match an organization, returns 503 and does not fall back.
+
 Idempotency key is `idempotencyKey` or `{reportDate}:{source}` (`tiktok` or
 `youtube`). Re-posting the same key replaces that report and its children.
 Card status (`open` / `filmed` / `skipped`) and backlog status past `idea`
@@ -27,17 +37,21 @@ are kept.
 
 `PULSE_INGEST_SECRET` is server-only. Add it in Dispatch vault (workspace
 secret, not required) or as a deploy env var for the unauthenticated Brandbot
-POST. Do not commit it. Signed-in members can also call the action.
+POST. Do not commit it. Signed-in members can also call the action; that
+path stores the report on their own organization.
 
 The contract example in the Brandbot doc has one recreate card. The schema
 requires at least two. `fixtures/pulse-2026-10-05-tiktok.json` is a valid
 local payload (the Oct 5 shape plus a water-pump card).
 
-## Drive fallback
+Signed-in members of the ingest organization see the stored report on
+**This week** and the other desks. No paste step.
 
-Until the secret is shared, drop `pulse-{reportDate}-{source}.json` next to
-the PDF and paste that JSON on **Inbox** (`pulse-ingest-from-drive`). Pulse
-does not download Drive bytes. A file id alone is recorded as not fetched.
+## Admin paste fallback
+
+Owners and admins can paste report text from **Inbox**. The control stays
+collapsed. Pulse does not download Drive bytes. A file id alone is recorded
+as not fetched.
 
 ## Dyno
 

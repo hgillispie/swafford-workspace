@@ -43,7 +43,7 @@ describe("WeekScreen", () => {
     latest.isPending = true;
     const html = renderWeek();
     expect(html.match(/animate-pulse/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(html).not.toContain("No pulse stored yet.");
+    expect(html).not.toContain("No report yet.");
     expect(html).not.toContain("didn't load");
   });
 
@@ -53,7 +53,7 @@ describe("WeekScreen", () => {
     const html = renderWeek();
     expect(html).toContain("You are not a member of this workspace.");
     expect(html).toContain("Retry");
-    expect(html).not.toContain("No pulse stored yet.");
+    expect(html).not.toContain("No report yet.");
   });
 
   it("shows the empty week when no pulse is stored", () => {
@@ -66,8 +66,8 @@ describe("WeekScreen", () => {
       summary: "No pulse stored yet.",
     };
     const html = renderWeek();
-    expect(html).toContain("No pulse stored yet.");
-    expect(html).toContain("Open inbox");
+    expect(html).toContain("No report yet.");
+    expect(html).toContain("Check inbox");
     expect(html).not.toContain("animate-pulse");
   });
 });

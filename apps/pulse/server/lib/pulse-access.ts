@@ -12,6 +12,10 @@ import { getDb } from "../db/index.js";
 import { pulseSettings } from "../db/schema.js";
 
 export const INGEST_SECRET_KEY = "PULSE_INGEST_SECRET";
+export const INGEST_ORG_ID_ENV = "PULSE_INGEST_ORG_ID";
+
+/** Organization ids are `randomUUID()` with the dashes removed. */
+const INGEST_ORG_ID_PATTERN = /^[0-9a-f]{32}$/i;
 
 export function bearerFromHeader(header: string | null | undefined): string {
   const value = header ?? "";
@@ -65,6 +69,45 @@ export async function assertIngestAuthorized(header: string | null | undefined) 
   return { mode: "session" as const, ...actor };
 }
 
+/**
+ * Fixed org for sessionless Brandbot ingest. Active only when
+ * `PULSE_INGEST_ORG_ID` is set. Unset returns null so callers keep the
+ * previous organization lookup.
+ */
+export function readConfiguredIngestOrgId(): string | null {
+  // guard:allow-env-credential — deploy-level org id for unauthenticated Brandbot ingest, not a user credential
+  const raw = process.env.PULSE_INGEST_ORG_ID?.trim() ?? "";
+  if (!raw) return null;
+  if (!INGEST_ORG_ID_PATTERN.test(raw)) {
+    fail(
+      `${INGEST_ORG_ID_ENV} must be a 32-character hex organization id with no dashes.`,
+      { statusCode: 503, errorCode: "ingest_org_invalid" },
+    );
+  }
+  return raw.toLowerCase();
+}
+
+/** Null when the env var is unset. A set value must match one organization. */
+export async function resolveBearerIngestOrgId(): Promise<string | null> {
+  const orgId = readConfiguredIngestOrgId();
+  if (!orgId) return null;
+  const db = getDb();
+  const row = (
+    await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1)
+  )[0];
+  if (!row) {
+    fail(
+      `${INGEST_ORG_ID_ENV} does not match an organization in this database.`,
+      { statusCode: 503, errorCode: "ingest_org_unknown" },
+    );
+  }
+  return orgId;
+}
+
 export async function resolveOrgId(): Promise<string> {
   const fromRequest = getRequestOrgId()?.trim();
   if (fromRequest) return fromRequest;
@@ -80,6 +123,10 @@ export async function resolveOrgId(): Promise<string> {
     "Pulse could not resolve a workspace organization for this ingest. Sign in, or keep a single organization in the workspace.",
     { statusCode: 503, errorCode: "org_unresolved" },
   );
+}
+
+export function isOrgAdmin(role: string): boolean {
+  return role === "owner" || role === "admin";
 }
 
 export async function requireMember(): Promise<{
@@ -118,7 +165,7 @@ export async function requireAdmin(): Promise<{
   role: string;
 }> {
   const actor = await requireMember();
-  if (actor.role !== "owner" && actor.role !== "admin") {
+  if (!isOrgAdmin(actor.role)) {
     fail("Hunter admin access is required for this Pulse setting.", {
       statusCode: 403,
       errorCode: "forbidden",
